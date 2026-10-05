@@ -2,7 +2,7 @@
 
 Uso (desde load-tests/):  python3 generar_graficas.py   (requiere matplotlib)
 Lee local/results-*.json y production/production-*.json (sustained, spike y
-breakpoint) y production/recursos-*.csv (salida de monitor.sh); escribe en
+breakpoint) y production/recursos-*.csv y local/recursos-*.csv (salida de monitor.sh); escribe en
 production/graficas/, local/graficas/ (sostenida y spike) y comparativa/.
 """
 import csv
@@ -124,15 +124,17 @@ if rec:
     fig.suptitle("Spike en producción: pico vs. fase de recuperación", fontweight="bold")
     guardar(fig, "production/graficas", "recuperacion")
 
-# --- producción: CPU, memoria y TIME_WAIT durante cada corrida (monitor.sh) ---
-for f in sorted(glob.glob("production/recursos-*.csv")):
+# --- CPU, memoria y TIME_WAIT durante cada corrida (monitor.sh), local y producción ---
+for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recursos-*.csv")):
+    carpeta_salida = os.path.join(os.path.dirname(f), "graficas")
     filas = list(csv.DictReader(open(f)))
     if len(filas) < 2:
         continue
     t = [(i * 1.0) for i in range(len(filas))]
     t0 = filas[0]["ts_utc"]
     num = lambda c: [float(r[c]) if r.get(c) not in (None, "") else float("nan") for r in filas]
-    fig, axs = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
+    con_bd = any(r.get("db_connections") not in (None, "") for r in filas)
+    fig, axs = plt.subplots(4 if con_bd else 3, 1, figsize=(10, 9 if con_bd else 7), sharex=True)
     for c, color, lab in [("host_cpu_pct", GRIS, "VM"), ("backend_cpu_pct", AZUL, "backend"), ("nginx_cpu_pct", NARANJA, "nginx")]:
         axs[0].plot(t, num(c), color=color, label=lab)
     axs[0].set_ylabel("CPU (%)"); axs[0].legend(loc="upper left")
@@ -143,12 +145,19 @@ for f in sorted(glob.glob("production/recursos-*.csv")):
     axs[1].set_ylabel("Memoria (MB)"); axs[1].legend(loc="center left")
     axs[2].plot(t, num("nginx_timewait"), color="#6a1b9a")
     axs[2].set_ylabel("TIME_WAIT (nginx)")
-    axs[2].set_xlabel(f"muestras (desde {t0})")
+    if con_bd:
+        axs[3].plot(t, num("db_cpu_pct"), color="#2e7d32", label="CPU de la BD (%)")
+        axs[3].set_ylabel("BD: CPU (%)")
+        ax2 = axs[3].twinx()
+        ax2.plot(t, num("db_connections"), color="#c62828", label="conexiones abiertas")
+        ax2.set_ylabel("conexiones abiertas")
+        axs[3].legend(loc="upper left"); ax2.legend(loc="upper right")
+    axs[-1].set_xlabel(f"muestras (desde {t0})")
     for ax in axs:
         ax.grid(alpha=0.3)
     nombre = os.path.basename(f)[:-4]
     fig.suptitle(f"Recursos durante la prueba: {nombre}", fontweight="bold")
-    guardar(fig, "production/graficas", nombre)
+    guardar(fig, carpeta_salida, nombre)
 
 # --- local: sostenida y spike (throughput, latencia y error) ---
 # En el spike se usa solo la fase de pico (phase:peak, 105 s) para que la recuperación no

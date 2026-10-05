@@ -83,15 +83,33 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 
 | Indicador | Resultado | Umbral | Cumple |
 |---|---:|---:|---|
-| Throughput | 639,5 req/s (511 381 peticiones) | — | — |
-| Latencia promedio | 2,36 ms | — | — |
-| p90 | 4,33 ms | — | — |
-| p95 | 5,32 ms | < 500 ms | ✅ |
-| **p99** | **7,05 ms** | — | — |
+| Throughput | 654,3 req/s (510 889 peticiones, todas 200) | — | — |
+| Latencia promedio | 3,3 ms | — | — |
+| p90 | 5,7 ms | — | — |
+| p95 | 7,0 ms | < 500 ms | ✅ |
+| **p99** | **10,0 ms** | — | — |
 | Tasa de error | 0,00 % | < 1 % | ✅ |
 
 ![Throughput por escenario](local/graficas/throughput.png)
 ![Latencia por escenario](local/graficas/latencia.png)
+
+### Recursos durante la sostenida (local)
+
+| Recurso | Promedio en la meseta | Máximo | Límite / lectura |
+|---|---:|---:|---|
+| CPU del backend | 95,4 % de un núcleo | 110,6 % | Es el recurso que se acerca a su tope: el backend consume casi un núcleo completo |
+| Memoria del backend | 664 MB | 677 MB | Límite del contenedor: 1 GB. Estable (sin crecimiento), sin reinicios ni `OOMKilled` |
+| CPU de la VM (20 núcleos) | 7,8 % | 8,5 % | Holgada |
+| CPU de PostgreSQL | 32,3 % | 35,2 % | Holgada: la base de datos no es el límite |
+| Memoria de PostgreSQL | 62 MB | 63 MB | — |
+| Conexiones abiertas a la BD | 10 | 10 | Es el pool completo (`DB_POOL_MAX_SIZE=10`); vale lo mismo en reposo, así que no prueba por sí solo que el pool se agote |
+
+Medido con `load-tests/monitor.sh` cada 5 s sobre la meseta de 7 min (54 muestras); en esta corrida k6
+llama al backend directo, de modo que el nginx no está en la ruta (su CPU y sus `TIME_WAIT` son los del
+reposo). Lectura: bajo 150 VUs el sistema es estable (error 0 %, memoria plana, sin reinicios) y el
+primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni la base de datos.
+
+![Recursos durante la carga sostenida (local)](local/graficas/recursos-sostenida-1.0.png)
 
 ### Pico extremo (Spike Testing)
 
@@ -231,9 +249,9 @@ redactado) en `production/`; los originales de `results/` siguen ignorados por g
 
 | | Local (150 VUs) | Producción (105 VUs, 0.7) |
 |---|---:|---:|
-| Throughput | 639,5 req/s | 388,2 req/s |
-| p95 | 5,3 ms | 446,6 ms |
-| p99 | 7,1 ms | 707,5 ms |
+| Throughput | 654,3 req/s | 388,2 req/s |
+| p95 | 7,0 ms | 446,6 ms |
+| p99 | 10,0 ms | 707,5 ms |
 | Errores | 0 % | 6,35 % |
 
 La diferencia de p95/p99 es sobre todo RTT de red (~100 ms) más la cola que aparece en la
@@ -321,7 +339,9 @@ Escribe `ts_utc, host_cpu_pct, host_mem_used_mb, backend_cpu_pct, backend_mem_mb
 nginx_mem_mb, nginx_timewait`. `nginx_timewait` son los sockets en `TIME_WAIT` del contenedor del
 nginx: si se acerca a ~28 000 se agotan los puertos efímeros y aparecen 502 (`connect() failed (99:
 Address not available)`). Copia el CSV a `production/recursos-<escenario>-<escala>.csv`;
-`generar_graficas.py` dibuja CPU, memoria y `TIME_WAIT` en el tiempo.
+`generar_graficas.py` dibuja CPU, memoria, `TIME_WAIT` y (si hay contenedor de PostgreSQL) la base de datos
+en el tiempo, y `resumen_recursos.py <csv> <desde_UTC> <hasta_UTC>` calcula promedio y máximo de la meseta
+(ventana: inicio de k6 + 3 min hasta + 10 min) listos para la tabla de la Fase 4.
 
 **2. Base de datos (RDS): CloudWatch**, misma ventana horaria (UTC) de la corrida. En la consola:
 RDS → la instancia → *Monitoring* → rango personalizado → capturas de `CPUUtilization`,

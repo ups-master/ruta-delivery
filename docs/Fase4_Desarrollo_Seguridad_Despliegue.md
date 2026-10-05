@@ -110,7 +110,29 @@ describir que "no se degradó" dentro del rango probado.
 
 0→150 VUs en 3 min, meseta de 150 VUs por 7 min, bajada a 0 en 2 min — dentro del rango
 que pide el enunciado (100-200 VUs, ramp-up 2-3 min, meseta 5-10 min, ramp-down 1-2 min).
-**639,5 req/s, p95 = 5,32 ms, p99 = 7,05 ms, 0,00 % de error** (511 381 peticiones).
+**654,3 req/s, p95 = 7,0 ms, p99 = 10,0 ms, 0,00 % de error** (510 889 peticiones, todas con
+código 200).
+
+**Recursos durante la carga sostenida (stack local, 150 VUs).**
+
+| Recurso | Promedio en la meseta | Máximo | Límite / lectura |
+|---|---:|---:|---|
+| CPU del backend | 95,4 % de un núcleo | 110,6 % | Es el recurso que se acerca a su tope: el backend consume casi un núcleo completo |
+| Memoria del backend | 664 MB | 677 MB | Límite del contenedor: 1 GB. Estable (sin crecimiento), sin reinicios ni `OOMKilled` |
+| CPU de la VM (20 núcleos) | 7,8 % | 8,5 % | Holgada |
+| CPU de PostgreSQL | 32,3 % | 35,2 % | Holgada: la base de datos no es el límite |
+| Memoria de PostgreSQL | 62 MB | 63 MB | — |
+| Conexiones abiertas a la BD | 10 | 10 | Es el pool completo (`DB_POOL_MAX_SIZE=10`); vale lo mismo en reposo, así que no prueba por sí solo que el pool se agote |
+
+Medido con `load-tests/monitor.sh` cada 5 s sobre la meseta de 7 min (54 muestras); en esta corrida k6
+llama al backend directo, de modo que el nginx no está en la ruta (su CPU y sus `TIME_WAIT` son los del
+reposo). Lectura: bajo 150 VUs el sistema es estable (error 0 %, memoria plana, sin reinicios) y el
+primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni la base de datos.
+
+![Recursos durante la carga sostenida (local)](../load-tests/local/graficas/recursos-sostenida-1.0.png)
+
+La base de datos de producción (RDS) y la instancia EC2 se miden con CloudWatch en las corridas de la
+sección 3.5.
 
 ### 3.2 Pico extremo (Spike Testing)
 
@@ -137,7 +159,7 @@ degradación progresiva.
 
 | Escenario | VUs / patrón | Throughput | Promedio | p90 | p95 | p99 | Error |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Sostenida | 0→150→0 (12 min) | 639,5 req/s | 2,36 ms | 4,33 ms | 5,32 ms | 7,05 ms | 0,00 % |
+| Sostenida | 0→150→0 (12 min) | 654,3 req/s | 3,3 ms | 5,7 ms | 7,0 ms | 10,0 ms | 0,00 % |
 | Spike (pico) | 0→750→0 (1 min 45 s + 2 min de recuperación) | ~4 140 req/s | 4,04 ms | 6,49 ms | 9,53 ms | 30,17 ms | 0,00 % |
 | Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | 88,0 ms | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
 
@@ -188,7 +210,7 @@ peticiones fallidas y no como latencia.
 **Hallazgos sobre el comportamiento:**
 
 - **La latencia base es de red:** el mínimo ronda 86–107 ms (RTT de ~100 ms hasta la EC2),
-  frente a 5,3 ms de p95 en local; no son comparables 1 a 1.
+  frente a 7,0 ms de p95 en local; no son comparables 1 a 1.
 - **Los errores son 502 del nginx de borde, no de la aplicación.** El `check` del escenario
   acepta 200 y 503, y los fallos coinciden exactamente con las peticiones fallidas
   (8 550 y 19 805), así que ninguna fue un 503 del Circuit Breaker. El log del nginx durante

@@ -69,3 +69,11 @@ describe('apiClient', () => {
     expect(window.location.href).toBe('')
   })
 })
+
+describe('interceptor de respuestas: caso exitoso', () => {
+  it('deja pasar la respuesta sin modificarla', () => {
+    const handlers = (apiClient.interceptors.response as unknown as InterceptorHandlers<unknown>).handlers
+    const respuesta = { data: { ok: true }, status: 200 }
+    expect(handlers[0]!.fulfilled(respuesta)).toBe(respuesta)
+  })
+})

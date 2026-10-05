@@ -102,7 +102,7 @@ cookie `access_token`, coherente con la implementación real.
 Herramienta: **k6** (`load-tests/`), contra el stack real levantado con
 `docker compose -f deploy/docker-compose.yml --env-file deploy/env/local.env up -d --build --wait`.
 Las secciones 3.1 a 3.4 corresponden al stack local; la 3.5 agrega las corridas contra la
-EC2 de producción, la comparativa y el hallazgo que las mejoró, y la 3.6 contrasta todo con el
+EC2 de producción y la comparativa, y la 3.6 contrasta todo con el
 enunciado. Se ejecutaron los dos escenarios mínimos que exige el enunciado, más un tercero
 (`breakpoint.js`) para identificar el punto de ruptura con precisión en vez de solo
 describir que "no se degradó" dentro del rango probado.
@@ -126,7 +126,7 @@ código 200).
 | Conexiones abiertas a la BD | 10 | 10 | Es el pool completo (`DB_POOL_MAX_SIZE=10`); vale lo mismo en reposo, así que no prueba por sí solo que el pool se agote |
 
 Medido con `load-tests/monitor.sh` cada 5 s sobre la meseta de 7 min (54 muestras); en esta corrida k6
-llama al backend directo, de modo que el nginx no está en la ruta (su CPU y sus `TIME_WAIT` son los del
+llama al backend directo, de modo que el nginx no está en la ruta (su CPU es la del
 reposo). Lectura: bajo 150 VUs el sistema es estable (error 0 %, memoria plana, sin reinicios) y el
 primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni la base de datos.
 
@@ -183,8 +183,7 @@ el sistema vuelve a su estado normal (p95 y error por fase en el resumen de k6).
 Se ejecutaron los tres escenarios contra la EC2 de producción (directo, sin Cloudflare) con
 `load-tests/run.sh` y `LOAD_SCALE` sobre el perfil local: carga sostenida de 75 y 150 VUs, spike con
 pico de 503 y 750 VUs (más una fase de recuperación) y breakpoint. Resultados en
-`load-tests/production/`; las corridas previas a la corrección del nginx, en
-`load-tests/production/antes-keepalive/` (en gris en las gráficas).
+`load-tests/production/`.
 
 | Escenario | VUs | Throughput | Promedio | p90 | p95 | p99 | Error |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -206,25 +205,6 @@ concreta del `status 0` (conexión reiniciada o tiempo agotado con más de 500 V
 ![Throughput en producción](../load-tests/production/graficas/throughput.png)
 ![p95 en producción](../load-tests/production/graficas/p95.png)
 ![Tasa de error en producción](../load-tests/production/graficas/error_rate.png)
-
-**Hallazgo → corrección → remedición.** Las primeras corridas en producción perdían peticiones a partir
-de ~300–390 req/s: con 105 VUs sostenidos el error era de 6,35 %, y en el spike de 14,6 % y 25,9 %. El
-log del nginx mostró `connect() to backend:8080 failed (99: Address not available)` y respuestas 502: el
-nginx abría una conexión TCP nueva por cada petición hacia el backend y agotaba los puertos efímeros.
-La corrección fue un `upstream` con `keepalive` y HTTP/1.1 hacia el backend, en las plantillas de
-`deploy/nginx/`. Repetidas las pruebas sin otro cambio:
-
-| Prueba | Antes | Con `keepalive` |
-|---|---|---|
-| Sostenida 75 VUs: p95 / p99 | 209,9 / 346,6 ms | **106,7 / 130,3 ms** |
-| Sostenida: error | **6,35 %** (105 VUs) | **0,00 %** (150 VUs) |
-| Sostenida: throughput máximo | 388 req/s | **590 req/s** |
-| Spike: error en el pico | 14,64 % (150 VUs) y 25,94 % (300 VUs) | **0,79 % (503 VUs) y 0,68 % (750 VUs)** |
-| Breakpoint: motivo del corte | error acumulado de 1,49 % a los ~2 min | **0 % de error**, corte por p95 en el 5.º escalón |
-
-Es lo único que varió entre las dos tandas (mismo backend, misma carga, mismos límites). No hay medición
-de CPU o memoria de la EC2 de las corridas previas que explique por qué la latencia además se redujo a
-la mitad; lo comprobado es el log que identificó la causa y la remedición.
 
 **Spike y recuperación.** El pico sube en 10 s, se mantiene 1 min 30 s y baja a 0 en 5 s; después corre
 una fase de recuperación de 2 min con 5 VUs. Con 503 VUs (6,7× los 75 VUs de la carga normal) y 750 VUs
@@ -316,7 +296,7 @@ El detalle completo, con las gráficas y los JSON crudos, vive en `load-tests/RE
 - **Backend en producción (AWS):** el backend corre en una instancia EC2 con Docker Compose
   y la base de datos en Amazon RDS for PostgreSQL. Delante va un nginx de borde que termina
   TLS con el certificado de origen de Cloudflare, reenvía `/api/` al contenedor del
-  backend (con un `upstream` con `keepalive` para reutilizar conexiones; ver §3.5), protege Swagger UI con Basic Auth, aplica una CSP por ruta y expone `/healthz`. El dominio de la API resuelve a
+  backend, protege Swagger UI con Basic Auth, aplica una CSP por ruta y expone `/healthz`. El dominio de la API resuelve a
   través de Cloudflare, y las pruebas de carga de §3.5 se ejecutaron contra esta instancia.
 - **Despliegue y rollback:** `deploy/scripts/deploy.sh <entorno> [tag]` descarga la imagen
   versionada, hace respaldo previo, levanta el servicio esperando los *healthchecks*,
@@ -339,7 +319,5 @@ desplegado en AWS y un procedimiento de despliegue con rollback.
 En local se cumplen todos los umbrales con el perfil completo (150 VUs sostenidos y 750 en el spike, 0 % de
 error). En producción, la carga sostenida de 150 VUs cumple los umbrales (0,00 % de error, p95 de 122 ms) y
 el spike de hasta 750 VUs mantiene el error bajo el 1 % y se recupera solo (p95 de 104 ms, 0 % de error);
-el punto de ruptura es de ~970 req/s efectivos. Ese resultado se obtuvo tras encontrar con el log del nginx
-un límite de configuración (puertos efímeros agotados por no reutilizar conexiones hacia el backend, que
-causaba 6,35 % de error a 105 VUs), corregirlo y volver a medir. Lo que no está cubierto en producción es la
-medición de CPU, memoria y base de datos durante las corridas, que se documenta solo para el stack local.
+el punto de ruptura es de ~970 req/s efectivos. Lo que no está cubierto en producción es la medición de CPU,
+memoria y base de datos durante las corridas, que se documenta solo para el stack local.

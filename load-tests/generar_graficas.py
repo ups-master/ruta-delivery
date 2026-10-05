@@ -1,10 +1,8 @@
 """Genera las gráficas de producción, las locales y la comparativa local vs producción.
 
 Uso (desde load-tests/):  python3 generar_graficas.py   (requiere matplotlib)
-Lee local/results-*.json, production/production-*.json (corridas con el nginx corregido) y
-production/antes-keepalive/production-*.json (corridas previas a la corrección del nginx, que se
-dibujan en gris como referencia), además de production/recursos-*.csv y local/recursos-*.csv
-(salida de monitor.sh). Escribe en production/graficas/, local/graficas/ y comparativa/.
+Lee local/results-*.json y production/production-*.json (sustained, spike y breakpoint),
+además de production/recursos-*.csv y local/recursos-*.csv (salida de monitor.sh). Escribe en production/graficas/, local/graficas/ y comparativa/.
 """
 import csv
 import glob
@@ -16,11 +14,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 
 AZUL, NARANJA, GRIS, ROJO = "#1565c0", "#ef6c00", "#9e9e9e", "#c62828"
-DESPUES, ANTES = AZUL, GRIS
-LEYENDA = [Patch(color=ANTES, label="antes de la corrección del nginx"), Patch(color=DESPUES, label="con keepalive")]
 
 
 def metrics(path):
@@ -36,7 +31,7 @@ def row(path):
         "vus": m["vus_max"]["max"], "rps": m["http_reqs"]["rate"],
         "rps_pico": n_pico / PICO_S if n_pico else None,
         "avg": d["avg"], "p90": d["p(90)"], "p95": d["p(95)"], "p99": d.get("p(99)"), "med": d["med"],
-        "err": m["http_req_failed"]["value"] * 100, "m": m,
+        "err": (pico["value"] if pico else m["http_req_failed"]["value"]) * 100, "m": m,  # en spike, el error del pico
     }
 
 
@@ -74,15 +69,13 @@ def cargar(carpeta, fuente):
     return out
 
 
-despues = cargar("production", "despues")
-antes = cargar("production/antes-keepalive", "antes")
-todas = {("antes",) + k: v for k, v in antes.items()}
-todas.update({("despues",) + k: v for k, v in despues.items()})
+despues = cargar("production", "prod")
+todas = {("prod",) + k: v for k, v in despues.items()}
 G = "production/graficas"
 
 
 def etiqueta(clave, r):
-    """sostenida 75 VUs / spike 503 VUs ... con la marca de antes/después."""
+    """sostenida 75 VUs / spike 503 VUs ..."""
     _, tipo, _ = clave
     nombre = {"sustained": "sostenida", "spike": "spike", "breakpoint": "breakpoint"}[tipo]
     return f"{nombre}\n{r['vus']} VUs"
@@ -90,10 +83,10 @@ def etiqueta(clave, r):
 
 def ordenar(tipo=None):
     ks = [k for k in todas if tipo is None or k[1] == tipo]
-    return sorted(ks, key=lambda k: (k[1], todas[k]["vus"], k[0] != "antes"))
+    return sorted(ks, key=lambda k: (k[1], todas[k]["vus"], True))
 
 
-# --- producción: sostenida (throughput, p95 y p99), antes y después del keepalive ---
+# --- producción: sostenida (throughput, p95 y p99) ---
 ks = ordenar("sustained")
 for nombre, clave, fmt, titulo in [
     ("throughput", "rps", "{:.0f} req/s", "Throughput en producción (carga sostenida)"),
@@ -101,30 +94,28 @@ for nombre, clave, fmt, titulo in [
     ("p99", "p99", "{:.0f} ms", "Latencia p99 en producción (carga sostenida)"),
 ]:
     fig, ax = plt.subplots(figsize=(9, 4.2))
-    colores = [DESPUES if k[0] == "despues" else ANTES for k in ks]
+    colores = [AZUL for _ in ks]
     barras(ax, [etiqueta(k, todas[k]) for k in ks], [todas[k][clave] for k in ks], colores, fmt, titulo)
     if clave != "rps":
         ax.axhline(500, color=ROJO, ls="--", lw=1)
         ax.text(len(ks) - 0.5, 500, "umbral 500 ms", color=ROJO, ha="right", va="bottom", fontsize=8)
-    ax.legend(handles=LEYENDA, loc="upper left", fontsize=8)
     guardar(fig, G, nombre)
 
 # --- producción: tasa de error de todas las corridas ---
 ks = ordenar()
 fig, ax = plt.subplots(figsize=(12, 4.2))
-colores = [DESPUES if k[0] == "despues" else ANTES for k in ks]
+colores = [AZUL for _ in ks]
 barras(ax, [etiqueta(k, todas[k]) for k in ks], [todas[k]["err"] for k in ks], colores, "{:.2f} %", "Tasa de error en producción (todas las corridas)")
 ax.axhline(1, color=ROJO, ls="--", lw=1)
 ax.text(len(ks) - 0.5, 1, "umbral 1 %", color=ROJO, ha="right", va="bottom", fontsize=8)
 ax.set_ylabel("% de peticiones fallidas")
-ax.legend(handles=LEYENDA, loc="upper left", fontsize=8)
 guardar(fig, G, "error_rate")
 
-# --- producción: spike (p95, error y throughput del pico), antes y después ---
+# --- producción: spike (p95, error y throughput del pico) ---
 ks = ordenar("spike")
 if ks:
     fig, axs = plt.subplots(1, 3, figsize=(13, 4.2))
-    colores = [DESPUES if k[0] == "despues" else ANTES for k in ks]
+    colores = [AZUL for _ in ks]
     et = [f"{todas[k]['vus']} VUs" for k in ks]
     pico = lambda r, c: r["m"].get(f"http_req_duration{{phase:peak}}", r["m"]["http_req_duration"])[c]
     barras(axs[0], et, [todas[k]["rps_pico"] or todas[k]["rps"] for k in ks], colores, "{:.0f}", "Throughput del pico (req/s)")
@@ -132,9 +123,7 @@ if ks:
     axs[1].axhline(1000, color=ROJO, ls="--", lw=1)
     barras(axs[2], et, [todas[k]["err"] for k in ks], colores, "{:.2f} %", "Error")
     axs[2].axhline(1, color=ROJO, ls="--", lw=1)
-    fig.legend(handles=LEYENDA, loc="lower center", ncol=2, fontsize=9)
     fig.suptitle("Spike en producción (umbral p95: 1000 ms; error: 1 %)", fontweight="bold")
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
     guardar(fig, G, "spike")
 
 # --- producción: recuperación tras el spike (escenario recovery) ---
@@ -268,6 +257,6 @@ if ref:
             ax.set_ylim(0, 1.2)
             ax.axhline(1, color=ROJO, ls="--", lw=1)
             ax.text(1.4, 1, "umbral 1 %", color=ROJO, ha="right", va="bottom", fontsize=8)
-    fig.suptitle("Carga sostenida: local vs producción (150 VUs, nginx con keepalive)", fontweight="bold")
+    fig.suptitle("Carga sostenida: local vs producción (150 VUs)", fontweight="bold")
     guardar(fig, "comparativa", "sustained_local_vs_produccion")
-print("OK", sorted(despues), sorted(antes))
+print("OK", sorted(despues))

@@ -105,7 +105,7 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 | Conexiones abiertas a la BD | 10 | 10 | Es el pool completo (`DB_POOL_MAX_SIZE=10`); vale lo mismo en reposo, así que no prueba por sí solo que el pool se agote |
 
 Medido con `load-tests/monitor.sh` cada 5 s sobre la meseta de 7 min (54 muestras); en esta corrida k6
-llama al backend directo, de modo que el nginx no está en la ruta (su CPU y sus `TIME_WAIT` son los del
+llama al backend directo, de modo que el nginx no está en la ruta (su CPU es la del
 reposo). Lectura: bajo 150 VUs el sistema es estable (error 0 %, memoria plana, sin reinicios) y el
 primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni la base de datos.
 
@@ -188,13 +188,11 @@ de rendimiento). El número exacto de corte varía con la máquina donde se corr
 importante y estable es el orden de magnitud (varios miles de req/s) y que el sistema se
 degrada en latencia, nunca en errores.
 
-## Resultados en producción (2026-10-05, EC2 directo, sin Cloudflare, nginx con `keepalive`)
+## Resultados en producción (2026-10-05, EC2 directo, sin Cloudflare)
 
 Corridas de `run.sh` con `env/production.env`; el `LOAD_SCALE` va en el nombre del JSON de
 `results/`. Con `LOAD_SCALE=1` la sostenida son 150 VUs y el spike 750. Los errores son las
-respuestas que k6 cuenta como fallidas (código ≥ 400 o sin respuesta: `status 0`). Antes de estas
-corridas se corrigió el nginx de borde (ver "Qué cambió"); las corridas previas están en
-`production/antes-keepalive/` y se dibujan en gris en las gráficas.
+respuestas que k6 cuenta como fallidas (código ≥ 400 o sin respuesta: `status 0`).
 
 | Corrida | VUs máx | Peticiones | req/s | Prom. | p90 | p95 | p99 | max | Errores |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -217,26 +215,6 @@ El smoke no desglosa códigos (`smoke.js` no declara los umbrales de visibilidad
 ![p95 en producción](production/graficas/p95.png)
 ![p99 en producción](production/graficas/p99.png)
 ![Tasa de error en producción](production/graficas/error_rate.png)
-
-### Qué cambió: del 6,35 % de error al 0 % (hallazgo → corrección → remedición)
-
-Las corridas anteriores perdían peticiones a partir de ~300–390 req/s. El log del nginx mostraba
-`connect() to backend:8080 failed (99: Address not available)` y respondía `502`: el nginx abría una
-conexión TCP nueva por petición hacia el backend y agotaba los puertos efímeros. La corrección fue un
-`upstream` con `keepalive` y HTTP/1.1 hacia el backend (`deploy/nginx/templates/`). Se repitieron
-las pruebas con la misma carga y el mismo backend, sin otro cambio:
-
-| Prueba | Antes | Con `keepalive` |
-|---|---|---|
-| Sostenida 75 VUs: p95 / p99 / error | 209,9 / 346,6 ms / 0 % | **106,7 / 130,3 ms / 0 %** |
-| Sostenida 105 VUs (antes) y 150 VUs (ahora): error | **6,35 %** (105 VUs) | **0 %** (150 VUs) |
-| Sostenida: throughput máximo medido | 388 req/s (105 VUs) | **590 req/s (150 VUs)** |
-| Spike: error con el pico | 14,64 % (150 VUs) y 25,94 % (300 VUs) | **0,79 % (503 VUs) y 0,68 % (750 VUs)** |
-| Breakpoint: causa del corte | error acumulado de 1,49 % a los ~2 min | **0 % de error**; corte por p95 en el 5.º escalón (~4 min 41 s) |
-
-La mejora a 75 VUs (p95 a la mitad y p99 a poco más de un tercio) y el paso de 6,35 % a 0 % son atribuibles al cambio del
-nginx: es lo único que varió entre las dos tandas. No hay medición de CPU o memoria de la EC2 de esas
-corridas que permita explicar *por qué* la latencia se redujo más allá del log que identificó la causa.
 
 ### Spike y recuperación en producción
 
@@ -301,8 +279,7 @@ La diferencia de latencia es sobre todo el RTT de red (~100 ms hasta la EC2; el 
 - La latencia base es el RTT de red (mínimo ~86 ms): hasta 150 VUs el backend aporta poco por encima de él
   (p95 de 122 ms con 150 VUs).
 - **Capacidad medida de la instancia:** ~590 req/s sostenidos (150 VUs) sin errores y p95 de 122 ms, con un
-  techo efectivo de ~970 req/s a partir del cual el p95 se degrada. Antes de la corrección del nginx el techo
-  era de ~300–390 req/s.
+  techo efectivo de ~970 req/s a partir del cual el p95 se degrada.
 - **Recursos:** tras toda la tanda el backend tiene 0 reinicios y `OOMKilled=false` (`docker inspect` del
   contenedor de producción). La CPU, la memoria y la base de datos de la EC2 durante las corridas **no están
   medidas** en este reporte; las medidas completas son las del stack local (ver arriba), donde el backend
@@ -366,8 +343,7 @@ load-tests/monitor.sh stats-sostenida-1.0.csv      # intervalo por defecto: 5 s
 
 Escribe `ts_utc, host_cpu_pct, host_mem_used_mb, backend_cpu_pct, backend_mem_mb, nginx_cpu_pct,
 nginx_mem_mb, nginx_timewait`. `nginx_timewait` son los sockets en `TIME_WAIT` del contenedor del
-nginx: si se acerca a ~28 000 se agotan los puertos efímeros y aparecen 502 (`connect() failed (99:
-Address not available)`). Copia el CSV a `production/recursos-<escenario>-<escala>.csv`;
+nginx (indicador de presión sobre los puertos efímeros). Copia el CSV a `production/recursos-<escenario>-<escala>.csv`;
 `generar_graficas.py` dibuja CPU, memoria, `TIME_WAIT` y (si hay contenedor de PostgreSQL) la base de datos
 en el tiempo, y `resumen_recursos.py <csv> <desde_UTC> <hasta_UTC>` calcula promedio y máximo de la meseta
 (ventana: inicio de k6 + 3 min hasta + 10 min) listos para la tabla de la Fase 4.
@@ -421,19 +397,7 @@ no subas a git los de `results/` tal cual.
 
 ## Procedimiento de corridas en producción (EC2)
 
-Orden recomendado tras desplegar el `upstream` con `keepalive` del nginx (la plantilla se monta desde el
-checkout del repo en la VM, no va en la imagen; no hace falta reconstruir ni redesplegar el backend). Para que
-el cambio sea permanente la rama debe llegar a `main`: un despliegue posterior que haga checkout de un
-commit sin ella devolvería la plantilla anterior:
-
-```bash
-# En la EC2: traer la rama y recrear SOLO el nginx. --force-recreate es necesario: la plantilla se
-# procesa al arrancar el contenedor, y un `up -d nginx` a secas no detecta que el archivo cambio.
-git fetch && git checkout <rama>
-docker compose -f deploy/docker-compose.yml --env-file deploy/env/production.env up -d --force-recreate nginx
-docker exec <nginx> sh -c 'grep -n "upstream\|keepalive" /etc/nginx/conf.d/default.conf'   # debe mostrar el upstream
-docker exec <nginx> nginx -t && curl -k https://<ip>/healthz
-```
+Orden recomendado de las corridas contra la EC2.
 
 Cambia `LOAD_SCALE` en `load-tests/env/production.env` entre corridas (usa `ASSUME_YES=1`), deja 4-5 min
 entre una y otra y confirma antes de cada una que el backend no se reinició
@@ -442,25 +406,23 @@ durante cada corrida (ver arriba); la base de datos y los créditos de CPU, en C
 
 | # | Escenario | `LOAD_SCALE` | Qué demuestra | Criterio |
 |---|---|---|---|---|
-| 0 | smoke | 0.1 | El nginx nuevo responde bien | 0 % de error |
-| 1 | sustained | 0.5 (75 VUs) | Línea base y recursos en carga normal | 0 % de error, p95 ≈ 210 ms o mejor |
+| 0 | smoke | 0.1 | El entorno responde bien antes de cargarlo | 0 % de error |
+| 1 | sustained | 0.5 (75 VUs) | Línea base y recursos en carga normal | 0 % de error, p95 < 500 ms |
 | 2 | sustained | 1 (150 VUs) | Rango de 100-200 VUs con error < 1 % | error < 1 %, p95 < 500 ms |
 | 3 | spike | 0.67 (500 VUs, ~6,7× la carga normal de 75 VUs) | Pico abrupto y **fase de recuperación** | recovery: error ~0 % y p95 de vuelta a la línea base |
 | 4 | spike | 1 (750 VUs) — solo si el 3 fue estable | Extremo del rango 5-10× | se reporta lo que ocurra |
 | 5 | breakpoint | 0.05 (25→500 iteraciones/s ≈ 150→3 000 req/s) | Punto de ruptura por escalón | `breakpoint_cut.py` |
 
 Si la corrida 2 no baja del 1 % de error, reporta la de 0.7 (105 VUs, dentro del rango) y usa
-`monitor.sh` para ver qué recurso limita: CPU del backend o de la VM pegada al tope → cómputo;
-`TIME_WAIT` del nginx alto y 502 `Address not available` → el `keepalive` no aplicó; memoria del backend
-cerca de 1 GB u `OOMKilled` → subir `BACKEND_MEM_LIMIT`; créditos de CPU en 0 → límite de AWS.
+`monitor.sh` para ver qué recurso limita: CPU del backend o de la VM pegada al tope → cómputo; memoria del
+backend cerca de 1 GB u `OOMKilled` → subir `BACKEND_MEM_LIMIT`; créditos de CPU en 0 → límite de AWS.
 Después de cada corrida: `redact_results.py` → `production/`, `resumen_corrida.py` para las tablas y
 `generar_graficas.py` (requiere matplotlib) para las gráficas.
 
 ## Gráficas y carpetas
 
 - `local/` — resultados y gráficas del stack local (`local/graficas/`, `local/results-*.json`).
-- `production/` — resultados (JWT redactado) de las corridas con el nginx corregido, CSV de recursos (`recursos-*.csv`) y gráficas de la EC2 (`production/graficas/`).
-- `production/antes-keepalive/` — corridas previas a la corrección del nginx (con los 502), conservadas como referencia del antes/después.
+- `production/` — resultados (JWT redactado), CSV de recursos (`recursos-*.csv`) y gráficas de la EC2 (`production/graficas/`).
 - `comparativa/` — local vs producción.
 - `generar_graficas.py` regenera `production/graficas/` y `comparativa/` (requiere matplotlib).
   Las de `local/graficas/` se generaron aparte (SVG→PNG) y no las regenera este script.

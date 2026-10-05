@@ -7,10 +7,9 @@
 # nginx corre sin root (nginx-unprivileged): escucha en 8080 dentro del contenedor; el
 # compose lo publica como HTTP_PORT.
 
-# Conexiones persistentes hacia el backend. Sin esto nginx abre una conexion TCP nueva por
-# peticion y, a ~300-400 req/s, agota los puertos efimeros (connect() ... failed (99:
-# Address not available) -> 502; ver load-tests/README.md). keepalive_timeout queda por
-# debajo del de Tomcat (20 s por defecto) para no reutilizar una conexion que ya cerro.
+# Conexiones persistentes hacia el backend (evita abrir una conexion TCP por peticion bajo
+# carga). keepalive_timeout queda por debajo del de Tomcat (20 s por defecto) para no reutilizar
+# una conexion que ya cerro.
 upstream ruta_backend {
     server backend:8080;
     keepalive 64;

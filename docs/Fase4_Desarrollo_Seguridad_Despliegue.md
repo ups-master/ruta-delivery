@@ -233,9 +233,9 @@ El detalle completo, con las gráficas y los JSON crudos, vive en `load-tests/RE
   `curl -I` contra el dominio real (200, con la CSP correcta en la respuesta).
 - **Backend en producción (AWS):** el backend corre en una instancia EC2 con Docker Compose
   y la base de datos en Amazon RDS for PostgreSQL. Delante va un nginx de borde que termina
-  TLS (origen de Cloudflare en modo *Full strict*), reenvía `/api/` al contenedor del
-  backend con conexiones persistentes (`upstream` con `keepalive`), protege Swagger UI con
-  Basic Auth, aplica una CSP por ruta y expone `/healthz`. El dominio de la API resuelve a
+  TLS con el certificado de origen de Cloudflare, reenvía `/api/` al contenedor del
+  backend (la plantilla del repositorio ya usa un `upstream` con `keepalive`, pendiente de
+  desplegar; ver §3.5), protege Swagger UI con Basic Auth, aplica una CSP por ruta y expone `/healthz`. El dominio de la API resuelve a
   través de Cloudflare, y las pruebas de carga de §3.5 se ejecutaron contra esta instancia.
 - **Despliegue y rollback:** `deploy/scripts/deploy.sh <entorno> [tag]` descarga la imagen
   versionada, hace respaldo previo, levanta el servicio esperando los *healthchecks*,

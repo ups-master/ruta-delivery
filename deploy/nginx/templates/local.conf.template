@@ -7,6 +7,16 @@
 # nginx corre sin root (nginx-unprivileged): escucha en 8080 dentro del contenedor; el
 # compose lo publica como HTTP_PORT.
 
+# Conexiones persistentes hacia el backend. Sin esto nginx abre una conexion TCP nueva por
+# peticion y, a ~300-400 req/s, agota los puertos efimeros (connect() ... failed (99:
+# Address not available) -> 502; ver load-tests/README.md). keepalive_timeout queda por
+# debajo del de Tomcat (20 s por defecto) para no reutilizar una conexion que ya cerro.
+upstream ruta_backend {
+    server backend:8080;
+    keepalive 64;
+    keepalive_timeout 15s;
+}
+
 include /etc/nginx/snippets/csp-map.conf;
 
 server {
@@ -24,7 +34,9 @@ server {
 
     location /api/ {
         include /etc/nginx/snippets/proxy-headers.conf;
-        proxy_pass http://backend:8080/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_pass http://ruta_backend/api/;
     }
 
     include /etc/nginx/snippets/api-docs.conf;

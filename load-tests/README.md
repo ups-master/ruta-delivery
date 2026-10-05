@@ -208,8 +208,10 @@ redactado) en `production/`; los originales de `results/` siguen ignorados por g
   respuesta `502`: el nginx no consigue abrir la conexión hacia el backend por agotamiento de
   puertos efímeros, porque abre una conexión nueva por petición (`proxy_pass` directo, sin
   `keepalive` ni HTTP/1.1 hacia el backend). Los `499` del log son peticiones que k6 cerró al
-  cortar la prueba. Es una inferencia a partir del log y de la configuración; falta
-  comprobarla aplicando `keepalive` y repitiendo la corrida.
+  cortar la prueba. Es una inferencia a partir del log y de la configuración. La corrección
+  (un `upstream` con `keepalive` y HTTP/1.1 hacia el backend) ya está en las plantillas de
+  `deploy/nginx/templates/`, pero **no se ha desplegado en la EC2 ni se repitieron las
+  corridas**: las cifras de esta sección corresponden a la configuración anterior.
 - **Breakpoint (`breakpoint.js` con `LOAD_SCALE=0.1`).** `ramping-arrival-rate` cuenta
   *iteraciones* por segundo y cada iteración hace 6 peticiones, así que `0.1` arranca en 50
   iteraciones/s (~300 req/s), ya en el nivel que la instancia sostiene. La corrida se cortó

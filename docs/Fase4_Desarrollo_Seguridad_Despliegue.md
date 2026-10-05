@@ -194,7 +194,9 @@ peticiones fallidas y no como latencia.
   `TIME_WAIT`, el techo teórico ronda los 470 conexiones por segundo, coherente con el
   punto donde empiezan los errores (303–388 req/s). Los `499` del log son peticiones que k6
   cerró al cortar la prueba. Que la causa sea esa se infiere del log y de la
-  configuración; no se probó aún modificándola.
+  configuración. La corrección (un `upstream` con `keepalive` y HTTP/1.1 hacia el backend)
+  ya está en las plantillas de nginx del repositorio, pero no se desplegó en la EC2 ni se
+  repitieron las corridas: las cifras de esta sección corresponden a la configuración anterior.
 - **Es un monolito en una sola instancia, la carga no se distribuye.** Todo el tráfico
   entra a un único nodo (un contenedor backend con 1 GB de memoria, una JVM, un pool de 10
   conexiones y una EC2; la BD es RDS, aparte). Por eso estas pruebas miden la capacidad *de

@@ -65,6 +65,7 @@ cd frontend
 corepack enable && pnpm install --frozen-lockfile
 
 pnpm test                    # vitest run
+pnpm run test:coverage       # vitest run --coverage (el CI exige >= 90 %)
 pnpm exec vitest run path/to/archivo.test.ts   # un solo archivo
 pnpm run typecheck           # tsc -b --noEmit
 pnpm run lint                # oxlint src vite.config.ts

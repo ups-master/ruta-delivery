@@ -215,14 +215,24 @@ Backend (incluye pruebas de integracion con Testcontainers contra un Postgres re
 requiere Docker y montar su socket dentro del contenedor que corre Maven):
 
 ```bash
-docker run --rm -v "$PWD/backend":/app -v maven-repo-cache:/root/.m2 \
-  -v /var/run/docker.sock:/var/run/docker.sock -w /app \
+# Se monta la raiz del repositorio (no solo backend/): OpenApiContractIntegrationTest lee ../docs/openapi.json
+docker run --rm -v "$PWD":/repo -v maven-repo-cache:/root/.m2 \
+  -v /var/run/docker.sock:/var/run/docker.sock -w /repo/backend \
   maven:3.9-eclipse-temurin-17 mvn test
 ```
 
-El reporte de cobertura (JaCoCo) queda en `backend/target/site/jacoco/index.html`.
+139 pruebas. El reporte de cobertura (JaCoCo, 81 % de instrucciones) queda en `backend/target/site/jacoco/index.html`.
 Sin Docker disponible para Testcontainers, `mvn test -Dtest='!*IntegrationTest'` corre
 el resto de la suite (excluye solo la prueba que necesita un Postgres real).
+
+Frontend (Node 24, desde `frontend/`): 215 pruebas con Vitest y Testing Library; el CI exige al menos 90 % de
+cobertura y hoy es de 97,5 % de instrucciones.
+
+```bash
+cd frontend && corepack enable && pnpm install --frozen-lockfile
+pnpm run test:coverage   # vitest run --coverage (reporte en la terminal)
+pnpm run typecheck && pnpm run lint
+```
 
 Frontend (TypeScript + pnpm; requiere Node 22+ — `jsdom` 30/`undici` 8 usan una API del
 navegador que Node 20 todavia no implementa y el arranque de vitest falla con

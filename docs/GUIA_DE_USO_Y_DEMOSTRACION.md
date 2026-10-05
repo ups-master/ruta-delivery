@@ -115,10 +115,9 @@ El menú lateral tiene cuatro secciones.
 **Panorama.** El centro de operaciones: un mapa con las entregas e incidencias (la ubicación registrada de cada
 una), las métricas por conductor (confirmadas, rechazadas, incidencias y total) en un rango de fechas de hasta 93
 días, el **costo por entrega verificada** del mes (entregas confirmadas, almacenamiento de evidencia,
-infraestructura y soporte; es un reporte informativo que no genera cargos) y el panel de **Resiliencia (Circuit
-Breaker + Retry)**, donde se consulta el estado y se pueden simular fallas. Las horas de soporte de cada mes no
-se editan en la pantalla: se registran por API con `PUT /api/v1/admin/cost/support-hours`
-(`{"month":"2026-10","hours":10}`).
+infraestructura y soporte; es un reporte informativo que no genera cargos), con un selector de mes y el campo
+**Horas de soporte** del mes (botón *Guardar horas*, que usa `PUT /api/v1/admin/cost/support-hours`), y el panel de
+**Resiliencia (Circuit Breaker + Retry)**, donde se consulta el estado y se pueden simular fallas.
 
 **Facturas.** Para crear y publicar pedidos:
 - *Nueva factura* abre el formulario: número, cliente, dirección, coordenadas esperadas, si requiere PIN y los
@@ -171,7 +170,7 @@ ventana normal y otra de incógnito): una para el administrador y otra para el c
 | 9 | Conductor | En otra factura, *Reportar incidencia* con el motivo "Cliente ausente" | La incidencia se registra sin cancelar la factura |
 | 10 | Admin | **Entregas** | Aparecen la confirmación, el rechazo y la incidencia, con foto, ubicación y distancia |
 | 11 | Admin | **Panorama** | El mapa muestra los puntos; las métricas por conductor cuentan confirmadas, rechazadas e incidencias |
-| 12 | Admin | **Panorama** → costo del mes | Entregas confirmadas, GB de evidencia y costo por entrega (informativo, no genera cargos); con las tarifas en 0 el costo es 0 y los datos reales son las entregas y los GB |
+| 12 | Admin | **Panorama** → costo del mes | Entregas confirmadas, GB de evidencia y costo por entrega (informativo, no genera cargos); con las tarifas en 0 el costo es 0 y los datos reales son las entregas y los GB; las horas de soporte se pueden editar y guardar ahí mismo |
 | 13 | Admin | **Panorama** → Resiliencia → simular fallas, y luego buscar una factura como conductor varias veces | El breaker se **abre** y la búsqueda responde 503 sin tocar la base; tras unos segundos pasa a `HALF_OPEN` y se recupera solo |
 | 14 | — | Iniciar sesión 6 veces con una contraseña incorrecta | A partir del 6.º intento, **429**: el login se limita por IP y usuario |
 | 15 | Admin | Abrir **Swagger UI** | El contrato completo y navegable de la API |
@@ -348,10 +347,10 @@ Para comprobar caché y rate limiting con un script: `load-tests/verificar_cache
 # Backend: 139 pruebas, incluidas las de integración con PostgreSQL real (Testcontainers; requiere Docker)
 docker run --rm -v "$PWD":/repo -v maven-repo-cache:/root/.m2 -v /var/run/docker.sock:/var/run/docker.sock \
   -w /repo/backend maven:3.9-eclipse-temurin-17 mvn test
-# Cobertura JaCoCo (~80 % de instrucciones): backend/target/site/jacoco/index.html
+# Cobertura JaCoCo (81 % de instrucciones): backend/target/site/jacoco/index.html
 
-# Frontend (Node 24): 25 pruebas
-cd frontend && corepack enable && pnpm install --frozen-lockfile && pnpm test && pnpm run typecheck && pnpm run lint
+# Frontend (Node 24): 215 pruebas con cobertura (97,5 % de instrucciones; el CI exige al menos 90 %)
+cd frontend && corepack enable && pnpm install --frozen-lockfile && pnpm run test:coverage && pnpm run typecheck && pnpm run lint
 
 # Verificación de punta a punta contra el stack real levantado (login, CSRF, PIN, concurrencia, foto, GPS, incidencias)
 RUTA_API=http://localhost:8080 RUTA_PASSWORD=$ADMIN_PW python scripts/verify_delivery.py

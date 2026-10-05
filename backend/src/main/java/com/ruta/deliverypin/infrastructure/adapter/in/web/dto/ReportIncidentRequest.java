@@ -10,7 +10,7 @@ public record ReportIncidentRequest(
         @Schema(example = "001-104-0000001234") @NotBlank String invoiceNumber,
         @Schema(example = "Cliente de prueba") String partnerName,
         @Schema(example = "Calle de prueba, Guayaquil") String deliveryAddress,
-        @Schema(example = "Cliente ausente", description = "Ver frontend/src/pages/driver/driverHome/incidentReasons.ts para los motivos que ofrece la PWA.")
+        @Schema(example = "Cliente ausente", description = "Motivo en texto libre. La aplicacion del conductor ofrece: Cliente ausente, Direccion incorrecta, Producto danado, Cliente rechazo la entrega y Otro.")
         @NotBlank String reason,
         @Schema(example = "Se llamo dos veces, nadie respondio.")
         @Size(max = 500, message = "Las notas no pueden superar los 500 caracteres") String notes,

@@ -577,13 +577,13 @@ seguridad recomendada para builds reproducibles.
 ## Documentación
 
 `docs/` incluye el documento de negocio (`Fase1_Vision_Producto_Modelo_Negocio_API_Final.md`),
-el de arquitectura y patrones (`Fase2_Arquitectura_Patrones_API.md`), el contrato de la API
-(`Fase3` -- ver `openapi.json`, exportado real desde `/v3/api-docs`) y el de desarrollo,
+el de arquitectura y patrones (`Fase2_Arquitectura_Patrones_API.md`), el de modelo de recursos y
+contrato de la API (`Fase3_Modelo_Datos_Especificacion_API.md`) y el de desarrollo,
 seguridad, pruebas y despliegue (`Fase4_Desarrollo_Seguridad_Despliegue.md`), ademas del
 modelo C4. La version **vigente** del modelo C4 es `docs/sistema-pruebas-entrega-1.5.dsl`
 (las revisiones `-1.0` a `-1.4` se conservan solo como historial de diseño,
-ya superadas). `docs/openapi.json` es el contrato OpenAPI 3 real, exportado desde
-`GET /v3/api-docs` con el backend corriendo (23 operaciones en los 8 controladores de
-negocio, todas con `summary`); para explorarlo interactivamente, `/swagger-ui/index.html`
+ya superadas). `docs/openapi.json` es el contrato OpenAPI 3 y la **fuente de verdad** de la API
+(contract-first): se edita antes que el codigo y `OpenApiContractIntegrationTest` falla si
+`GET /v3/api-docs` difiere de el (23 operaciones en 8 controladores); para explorarlo interactivamente, `/swagger-ui/index.html`
 con el backend levantado. `docs/EVALUACION_TECNICA.md` es la evaluación técnica del
 repositorio.

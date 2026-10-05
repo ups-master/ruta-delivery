@@ -1,5 +1,6 @@
 package com.ruta.deliverypin.infrastructure.adapter.in.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.ruta.deliverypin.domain.port.in.LoginUseCase;
 
 /**
@@ -8,7 +9,7 @@ import com.ruta.deliverypin.domain.port.in.LoginUseCase;
  * respuesta, para que el JavaScript del frontend no pueda leerlo (mitiga robo de
  * sesion por XSS).
  */
-public record LoginResponse(String username, String fullName, String role) {
+public record LoginResponse(String username, String fullName, @Schema(allowableValues = {"ADMIN", "CONDUCTOR"}) String role) {
 
     public static LoginResponse from(LoginUseCase.AuthResult result) {
         return new LoginResponse(result.username(), result.fullName(), result.role().name());

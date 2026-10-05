@@ -44,6 +44,7 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              - 'docs/openapi.json'
             frontend:
               - 'frontend/**'
 

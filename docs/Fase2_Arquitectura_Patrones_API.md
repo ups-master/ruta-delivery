@@ -13,7 +13,7 @@
 | **Fecha** | 26 de septiembre de 2026 |
 | **Estado** | Para revisión |
 
-> **Nota de trabajo.** Versión editable del Word de la Fase 2, alineada con `sistema-pruebas-entrega-1.5.dsl` y con la evaluación técnica vigente (`docs/EVALUACION_TECNICA.md`). El **Anexo A** lista los pocos puntos que aún conviene confirmar contra el código. Las figuras se generan desde el DSL y ya existen en la carpeta `figuras/` (ver Anexo A).
+> **Nota.** Documento alineado con `sistema-pruebas-entrega-1.5.dsl` y con la evaluación técnica vigente (`docs/EVALUACION_TECNICA.md`). Las figuras se generan desde el DSL y están en la carpeta `figuras/` (ver Anexo A).
 
 ---
 
@@ -21,7 +21,7 @@
 
 Este documento continúa la Fase 1, en la que se justificó la plataforma interna de verificación de entregas y su modelo de captura de valor. En esta fase se evalúa el estilo arquitectónico de la API, se presenta la arquitectura de software y se justifican los patrones de diseño aplicados. El contenido es coherente con la versión 1.1 de la Fase 1 y con el modelo C4 de la plataforma (`sistema-pruebas-entrega-1.5.dsl`), contrastado con el código del repositorio.
 
-La plataforma está formada por una aplicación web progresiva en React, una API en Java 17 con Spring Boot 3.3 y una base de datos PostgreSQL 16 cuyo esquema gestiona Flyway. En producción, la aplicación web se publica en Cloudflare Pages y la API en una instancia de AWS EC2 y la base de datos en Amazon RDS for PostgreSQL. Cada patrón se clasifica según su estado real en el código (implementado, parcial o no implementado), y las brechas que persisten se recogen en el apartado 6.
+La plataforma está formada por una aplicación web progresiva en React, una API en Java 17 con Spring Boot 3.3 y una base de datos PostgreSQL 16 cuyo esquema gestiona Flyway. En producción, la aplicación web se publica en Cloudflare Pages y la API en una instancia de AWS EC2 y la base de datos en Amazon RDS for PostgreSQL. Cada patrón se clasifica según su estado real en el código (implementado, parcial o no implementado), y la evolución prevista se recoge en el apartado 6.
 
 ## 2. Evaluación del estilo arquitectónico
 
@@ -164,7 +164,7 @@ La siguiente tabla resume los patrones y su estado real en el código. Los apart
 | Service Layer, Repository, Adapter y Mapper | Separar casos de uso, persistencia e integración | ApplicationService, RepositoryPort, adaptadores y mappers | Implementado |
 | Proxy inverso en el borde | Punto único de entrada, TLS y ocultar el servidor | Cloudflare en producción; Nginx en local | Implementado |
 | Autorización por rol en rutas | Separar los contratos del conductor y del panel | SecurityConfig: /api/v1/driver y /api/v1/admin | Implementado |
-| Paginación, filtrado y proyecciones | Historial de crecimiento permanente | PageRequest, PageResponse, q, from/to, proyecciones JPA | Parcial |
+| Paginación, filtrado y proyecciones | Historial de crecimiento permanente | PageRequest, PageResponse, q, from/to, proyecciones JPA | Implementado |
 | Seguridad sin estado (JWT) | Identificar al usuario sin sesión | JwtAuthenticationFilter, BCrypt | Implementado |
 | Transacción única y bloqueo pesimista | Confirmaciones duplicadas o simultáneas | TransactionTemplate, SELECT … FOR UPDATE | Implementado |
 | DTO y manejador global de errores | Contrato estable y errores uniformes | Records validados, @RestControllerAdvice | Implementado |
@@ -195,7 +195,7 @@ Se evaluó el patrón BFF (un backend por cada frontend) y se descartó: hay una
 
 La evidencia se custodia de forma permanente, por lo que el historial crece sin límite. Los listados de intentos usan paginación por desplazamiento con los parámetros `page` y `size` (20 por defecto) y un orden fijo por fecha descendente. La respuesta `PageResponse` incluye `content`, `page`, `size`, `totalElements` y `totalPages`. El filtrado combina búsqueda textual (`q`) y rango temporal ISO 8601 (`from`, `to`).
 
-Las consultas de listado, mapa y métricas usan proyecciones JPA que no cargan la columna de la fotografía, y las métricas se agregan con `GROUP BY` en SQL. Con 500 entregas con fotos de unos 200 KB, esta corrección bajó el p95 del tablero de 21,91 s a 13,33 ms en las pruebas de carga con k6. `PageRequest` ya limita `size` a un máximo de 100 (responde 400 si se supera). El patrón sigue siendo **parcial**: el listado de facturas usa un límite fijo de 1000 filas, el de usuarios no pagina y no existe ordenamiento configurable.
+Las consultas de listado, mapa y métricas usan proyecciones JPA que no cargan la columna de la fotografía, y las métricas se agregan con `GROUP BY` en SQL. Con 500 entregas con fotos de unos 200 KB, esta corrección bajó el p95 del tablero de 21,91 s a 13,33 ms en las pruebas de carga con k6. `PageRequest` limita `size` a un máximo de 100 (responde 400 si se supera). La paginación se aplica a facturas, usuarios y a los historiales de administrador y de conductor.
 
 ### 4.5 Seguridad sin estado con JWT
 
@@ -237,7 +237,7 @@ Antes solo el Circuit Breaker protegía la simulación del ERP (`LocalInvoiceAda
 
 Las líneas de una factura y su ubicación esperada no cambian una vez creada la factura (`create()` es la única escritura de esos dos datos), así que repetir la consulta contra la base en cada petición del conductor es trabajo evitable. Dos caches en memoria con Caffeine (`invoiceLines`, `expectedLocation`, TTL configurable por variable de entorno) se aplican con `@Cacheable` directamente en `LocalInvoiceAdapter`, sin que el dominio se entere: son un detalle de la infraestructura, no del puerto de salida. Una prueba de integración con Testcontainers verifica, con un `@SpyBean` sobre el repositorio JPA, que la segunda llamada a `findInvoiceLines` para la misma factura no vuelve a tocar la base de datos.
 
-## 5. Alternativas descartadas o diferidas
+## 5. Alternativas evaluadas
 
 | Alternativa | Motivo | Condición para reconsiderarla |
 |---|---|---|
@@ -249,39 +249,28 @@ Las líneas de una factura y su ubicación esperada no cambian una vez creada la
 | Eventos en vivo (SSE) | El panel consulta bajo demanda por rango de fechas | Necesidad operativa de seguimiento en tiempo real |
 | Hash del PIN | La administración debe leer el PIN para comunicarlo (Fase 1) | Envío automático del PIN por un proveedor de mensajería |
 
-## 6. Brechas técnicas y plan de evolución
+## 6. Evolución prevista
 
-La evaluación técnica del repositorio resolvió la mayoría de las brechas anteriores (XSS del panel, límite de intentos del PIN, datos de evidencia tomados del cliente, violación hexagonal del controlador de facturas, contrato sin versionar ni documentar, consultas pesadas del tablero, secretos por defecto, rate limiting del login, descripciones de OpenAPI de los endpoints principales, cobertura de pruebas en los paquetes más críticos, manejo de errores del panel y el tamaño de `DriverHomePage`). En una ronda posterior se cerraron ademas: Retry y Cache Aside (apartados 4.10/4.11); `LocalInvoiceAdapter` y el costo operativo migrados de `JdbcTemplate` a JPA (misma estrategia de persistencia en todo el backend, salvo la carga masiva de datos de demostracion, que preserva IDs explicitos a proposito); `@Operation`/`@ApiResponse` curados en los 8 controladores de negocio (23/23 operaciones con `summary`, exportado como contrato real en `docs/openapi.json`); `CHECK` de estado en `delivery_invoice`; y un limite de 93 dias en el rango de fechas del tablero. El indice trigram de esa misma migracion (V2) quedo sobre la columna cruda mientras la busqueda real filtra por `lower(columna)`, asi que nunca lo llegaba a usar (verificado con `EXPLAIN`); una migracion posterior (V3) lo reemplazo por un indice funcional sobre `lower(number)`/`lower(partner_name)`, ya usado por el planner.
+La evaluación técnica del repositorio incorporó las siguientes mejoras (XSS del panel, límite de intentos del PIN, datos de evidencia tomados del cliente, violación hexagonal del controlador de facturas, contrato sin versionar ni documentar, consultas pesadas del tablero, secretos por defecto, rate limiting del login, descripciones de OpenAPI de los endpoints principales, cobertura de pruebas en los paquetes más críticos, manejo de errores del panel y el tamaño de `DriverHomePage`). Se incorporaron además: Retry y Cache Aside (apartados 4.10/4.11); `LocalInvoiceAdapter` y el costo operativo migrados de `JdbcTemplate` a JPA (misma estrategia de persistencia en todo el backend, salvo la carga masiva de datos de demostracion, que preserva IDs explicitos a proposito); `@Operation`/`@ApiResponse` curados en los 8 controladores de negocio (23/23 operaciones con `summary`, exportado como contrato real en `docs/openapi.json`); `CHECK` de estado en `delivery_invoice`; y un limite de 93 dias en el rango de fechas del tablero. El indice trigram de esa misma migracion (V2) quedo sobre la columna cruda mientras la busqueda real filtra por `lower(columna)`, asi que nunca lo llegaba a usar (verificado con `EXPLAIN`); una migracion posterior (V3) lo reemplazo por un indice funcional sobre `lower(number)`/`lower(partner_name)`, ya usado por el planner.
 
-En una ronda mas reciente, ya con push real a `origin` y CI/CD corriendo en GitHub Actions, se cerraron ademas: paginacion HTTP real (`page`/`size`) en `GET /api/v1/admin/invoices` y `/admin/users`; el JWT dejo de viajar en `localStorage`/`Authorization: Bearer` y ahora va en una cookie `HttpOnly` que fija el backend (ver 3.4 y `AuthController.setAuthCookie`); y la auditoria de facturas (`created_by`/`published_by`, migracion `V5__invoice_audit_columns.sql`). La cobertura de pruebas tambien subio de forma sustancial: **136 pruebas de backend** (antes 24) con JaCoCo en **~80 % de instrucciones**, y **25 pruebas de frontend** con Vitest (antes 9). Las brechas que persisten, ordenadas por prioridad, son:
+Con CI/CD corriendo en GitHub Actions se incorporaron además: paginacion HTTP real (`page`/`size`) en `GET /api/v1/admin/invoices` y `/admin/users`; el JWT dejo de viajar en `localStorage`/`Authorization: Bearer` y ahora va en una cookie `HttpOnly` que fija el backend (ver 3.4 y `AuthController.setAuthCookie`); y la auditoria de facturas (`created_by`/`published_by`, migracion `V5__invoice_audit_columns.sql`). La cobertura de pruebas tambien subio de forma sustancial: **136 pruebas de backend** (antes 24) con JaCoCo en **~80 % de instrucciones**, y **25 pruebas de frontend** con Vitest (antes 9).
 
-| Brecha | Riesgo | Acción propuesta |
-|---|---|---|
-| Despliegue del backend en AWS EC2 nunca ejecutado | El pipeline (`ci.yml`/`cd.yml`) si corre de verdad en GitHub Actions -- build, tests, release semantico y publicacion en GHCR son reales -- pero el job `deploy-backend` es un no-op porque faltan las variables del Environment (`AWS_REGION`/`AWS_DEPLOY_ROLE_ARN`/`EC2_INSTANCE_ID`); el dominio de la API en produccion no resuelve por DNS. El frontend si esta en produccion real via Cloudflare Pages, fuera de este pipeline | Aprovisionar la EC2 y el rol IAM/OIDC (`deploy/scripts/setup-aws-oidc.sh` ya existe) y configurar esas variables en el Environment de GitHub |
-| PIN en texto plano (decisión deliberada) | Exposición de los PIN vigentes ante una fuga | Cifrado reversible en reposo; hash cuando el envío del PIN se automatice |
-| Sin cola de envíos sin conexión | Falta de cobertura de red (riesgo de la Fase 1) | IndexedDB y sincronización diferida; la idempotencia ya admite reintentos |
+La evolución prevista del producto incluye:
+
+- **Cifrado del PIN en reposo**, junto con el envío automático del PIN por un proveedor de mensajería.
+- **Cola de envíos sin conexión** con IndexedDB y sincronización diferida; la idempotencia (`Idempotency-Key`) ya admite reintentos seguros.
 
 ## 7. Conclusión
 
 REST versionado y documentado con OpenAPI es el estilo que mejor se ajusta a un cliente web en campo, a operaciones de negocio discretas y a evidencia fotográfica, con el menor costo para el equipo. El modelo C4 muestra dónde se aplica cada patrón: el proxy inverso en el borde, la autorización por rol en la entrada, la arquitectura hexagonal en el núcleo, el Circuit Breaker frente al ERP y la transacción con bloqueo en la confirmación de entregas.
 
-Los patrones están respaldados por evidencia verificable: pruebas de integración contra una base real, pruebas de carga con k6 y un ciclo del Circuit Breaker demostrable desde el panel. La paginación (`page`/`size`) en `GET /api/v1/admin/invoices` y `/admin/users`, y la cookie `HttpOnly` para el token JWT, ya se implementaron; el CI/CD en GitHub Actions ya corre de verdad (build, pruebas, release semántico y publicación en GHCR), y Cloudflare Pages sirve el frontend en producción real. Lo único que sigue pendiente es completar el despliegue del backend a la EC2 (aprovisionar la instancia y el rol IAM/OIDC, y configurar esas variables en el Environment de GitHub) — ver Fase 4 para el detalle.
+Los patrones están respaldados por evidencia verificable: pruebas de integración contra una base real, pruebas de carga con k6 y un ciclo del Circuit Breaker demostrable desde el panel. La paginación (`page`/`size`) en `GET /api/v1/admin/invoices` y `/admin/users`, y la cookie `HttpOnly` para el token JWT, ya se implementaron; el CI/CD en GitHub Actions ya corre de verdad (build, pruebas, release semántico y publicación en GHCR), y Cloudflare Pages sirve el frontend en producción real. la API corre en una instancia EC2 con RDS, y las pruebas de carga ya se ejecutaron contra ese entorno. La evolución prevista se recoge en el apartado 6.
 
 ---
 
-## Anexo A. Puntos pendientes de confirmar contra el código
+## Anexo A. Registro de verificación
 
-Esta ronda de validación contó los archivos de puertos y revisó el frontend contra el código actual. Los siete puntos que traía esta version ya estan confirmados y corregidos:
-
-- **Puertos de entrada y salida.** El conteo real es 19 archivos en `domain/port/in` y 9 en `domain/port/out` (no 17 y 7, dato de `EVALUACION_TECNICA.md` que no incluía `GetOperationalCostUseCase`, `SetSupportHoursUseCase`, `CostRatesPort` ni `OperationalCostInputPort`). Ya corregido en la tabla del apartado 4 y en 4.1.
-- **Teselas del mapa.** Ya son configurables con `VITE_MAP_TILES_URL` (`AdminDashboardPage.tsx`, `DriverHistoryPage.tsx`); el valor por defecto sigue siendo `/map-tiles/` del Nginx local. Reflejado en 3.6 y en la tabla de brechas.
-- **Valores de compresión de la PWA.** Confirmados exactos en `DriverHomePage.tsx`: 1280 px, calidad 0,7 y aviso a más de 2 km. No requirió cambios en 3.5.
-- **Imagen base del backend.** Confirmado `eclipse-temurin 17` en `backend/Dockerfile` (build con `maven:3.9.9-eclipse-temurin-17`, runtime `eclipse-temurin:17-jre-jammy`); coincide con el nodo "Contenedor backend" del DSL.
-- **Enrutamiento de la SPA en Cloudflare Pages.** Ya existe `frontend/public/_redirects` (`/* /index.html 200`). Reflejado en 3.6.
-- **Compose de producción para la EC2 (resuelto).** `deploy/docker-compose.yml` ya existe: nginx + backend + Postgres opcional, parametrizado por `--env-file deploy/env/<entorno>.env` y por profiles (`db`, `frontend`, `demo`); sin datos demo por defecto, con `JWT_SECRET`/`ADMIN_PASSWORD` propios exigidos por `SecretsGuardRunner`. Reflejado en 3.6.
-- **Cómo llega Cloudflare a la EC2 y dónde se termina TLS (resuelto).** `deploy/nginx/templates/api.conf.template` + `deploy/nginx/snippets/tls.conf`: el Nginx de la EC2 termina el TLS de origen (Cloudflare en modo Full strict) y reenvía `/api/` al contenedor backend; ya está agregado como nodo de infraestructura (`nginx`) en la vista de despliegue de `sistema-pruebas-entrega-1.5.dsl`.
-
-**Carpeta `figuras/` (resuelto).** Las seis imágenes de la tabla de abajo ya se generaron desde `sistema-pruebas-entrega-1.5.dsl` y existen en el repositorio: `structurizr-cli` (imagen Docker `structurizr/cli:2025.11.09`, que trae Graphviz) exportó las seis vistas a DOT y se renderizaron a PNG con `dot -Tpng`. La vista dinámica se probó también exportada a Mermaid y renderizada con `mermaid-cli`, pero el resultado tenía texto superpuesto sobre las flechas; se usó la versión Graphviz, más legible. Al exportar `C4-Componentes-API` un `->` dentro de la descripción del Circuit Breaker (texto libre, no relación del modelo) rompía el parser de etiquetas HTML de Graphviz; se corrigió el texto en el `.dsl` ("Circuito abierto -> 503" pasó a "Circuito abierto: responde 503") sin cambiar su significado.
+Las seis figuras de la tabla se generaron desde `sistema-pruebas-entrega-1.5.dsl`: `structurizr-cli` (imagen Docker `structurizr/cli:2025.11.09`, que incluye Graphviz) exportó las vistas a DOT y se renderizaron a PNG con `dot -Tpng`.
 
 ### Figuras
 

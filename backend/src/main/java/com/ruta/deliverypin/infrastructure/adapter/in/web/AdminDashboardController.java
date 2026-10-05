@@ -4,6 +4,7 @@ import com.ruta.deliverypin.domain.port.in.GetDriverMetricsUseCase;
 import com.ruta.deliverypin.domain.port.in.ListDeliveryAttemptsInRangeUseCase;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.DeliveryAttemptResponse;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.DriverMetricResponse;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -57,8 +58,8 @@ public class AdminDashboardController {
     })
     @GetMapping("/map")
     public List<DeliveryAttemptResponse> map(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
+            @Parameter(description = "Inicio del rango (ISO-8601). El rango entre from y to no puede superar 93 dias.") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @Parameter(description = "Fin del rango (ISO-8601). No puede ser anterior a from.") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
     ) {
         validateRange(from, to);
         return listDeliveryAttemptsInRangeUseCase.list(from, to).stream()
@@ -74,8 +75,8 @@ public class AdminDashboardController {
     })
     @GetMapping("/metrics")
     public List<DriverMetricResponse> metrics(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
+            @Parameter(description = "Inicio del rango (ISO-8601). El rango entre from y to no puede superar 93 dias.") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @Parameter(description = "Fin del rango (ISO-8601). No puede ser anterior a from.") @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
     ) {
         validateRange(from, to);
         return getDriverMetricsUseCase.metrics(from, to).stream().map(DriverMetricResponse::from).toList();

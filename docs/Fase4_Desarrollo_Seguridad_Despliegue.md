@@ -87,10 +87,12 @@ cookie `access_token`, coherente con la implementación real.
 
 ## 2. Calidad: pruebas unitarias y cobertura
 
-- **Backend:** 136 pruebas (`mvn test`, BUILD SUCCESS, ejecutadas en un contenedor Maven
+- **Backend:** 139 pruebas (`mvn test`, BUILD SUCCESS, ejecutadas en un contenedor Maven
   limpio con Testcontainers, incluidas pruebas de integración reales contra un PostgreSQL
   real — bloqueo de PIN, concurrencia con `SELECT ... FOR UPDATE`, caché real, escape de
   comodines en la búsqueda). Cobertura JaCoCo: **~80 % de instrucciones**, ~58% de ramas.
+- **Contrato:** una prueba de integración compara lo que publica la API (`/v3/api-docs`) con el
+  contrato versionado `docs/openapi.json` y falla ante cualquier diferencia.
 - **Frontend:** 25 pruebas con Vitest + Testing Library (`apiClient`, interceptores de
   sesión/401, páginas de administración).
 - El detalle por clase y por ronda de mejora está en `docs/EVALUACION_TECNICA.md` §8/§16.
@@ -108,14 +110,41 @@ describir que "no se degradó" dentro del rango probado.
 
 0→150 VUs en 3 min, meseta de 150 VUs por 7 min, bajada a 0 en 2 min — dentro del rango
 que pide el enunciado (100-200 VUs, ramp-up 2-3 min, meseta 5-10 min, ramp-down 1-2 min).
-**639,5 req/s, p95 = 5,32 ms, p99 = 7,05 ms, 0,00 % de error** (511 381 peticiones).
+**654,3 req/s, p95 = 7,0 ms, p99 = 10,0 ms, 0,00 % de error** (510 889 peticiones, todas con
+código 200).
+
+**Recursos durante la carga sostenida (stack local, 150 VUs).**
+
+| Recurso | Promedio en la meseta | Máximo | Límite / lectura |
+|---|---:|---:|---|
+| CPU del backend | 95,4 % de un núcleo | 110,6 % | Es el recurso que se acerca a su tope: el backend consume casi un núcleo completo |
+| Memoria del backend | 664 MB | 677 MB | Límite del contenedor: 1 GB. Estable (sin crecimiento), sin reinicios ni `OOMKilled` |
+| CPU de la VM (20 núcleos) | 7,8 % | 8,5 % | Holgada |
+| CPU de PostgreSQL | 32,3 % | 35,2 % | Holgada: la base de datos no es el límite |
+| Memoria de PostgreSQL | 62 MB | 63 MB | — |
+| Conexiones abiertas a la BD | 10 | 10 | Es el pool completo (`DB_POOL_MAX_SIZE=10`); vale lo mismo en reposo, así que no prueba por sí solo que el pool se agote |
+
+Medido con `load-tests/monitor.sh` cada 5 s sobre la meseta de 7 min (54 muestras); en esta corrida k6
+llama al backend directo, de modo que el nginx no está en la ruta (su CPU y sus `TIME_WAIT` son los del
+reposo). Lectura: bajo 150 VUs el sistema es estable (error 0 %, memoria plana, sin reinicios) y el
+primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni la base de datos.
+
+![Recursos durante la carga sostenida (local)](../load-tests/local/graficas/recursos-sostenida-1.0.png)
+
+La base de datos de producción (RDS) y la instancia EC2 se miden con CloudWatch en las corridas de la
+sección 3.5.
 
 ### 3.2 Pico extremo (Spike Testing)
 
-0→750 VUs (10x la meseta sostenida) en 30s, meseta de 1 min, bajada a 0 en 30s — dentro
-del rango que pide el enunciado (5-10x la carga normal, pico de 1-2 min).
-**3 075,4 req/s, p95 = 5,54 ms, p99 = 12,19 ms, 0,00 % de error** (403 397 peticiones); el
-Circuit Breaker queda `CLOSED` sin ninguna llamada rechazada, sin señal de saturación.
+0→750 VUs (5x la meseta sostenida de 150 VUs) en 10 s, pico de 1 min 30 s y bajada inmediata
+a 0 en 5 s, dentro del rango que pide el enunciado (5-10x la carga normal, pico de 1-2 min).
+**Pico: ~4 140 req/s, p95 = 9,53 ms, p99 = 30,17 ms, 0,00 % de error** (434 862 peticiones).
+Tras el pico corre una **fase de recuperación** de 2 min con 5 VUs: p95 = 6,65 ms y 0,00 % de
+error, es decir, el sistema vuelve solo a su latencia normal sin caídas en cascada. El Circuit
+Breaker queda `CLOSED`, sin ninguna llamada rechazada ni reintento, sin señal de saturación.
+Los códigos de respuesta fueron todos 200. La caché de lecturas y el rate limiting de la
+aplicación no se aíslan en esta prueba (solo hay lecturas del admin) y no hay autoescalado:
+es una sola instancia.
 
 ### 3.3 Punto de ruptura (Breakpoint)
 
@@ -128,45 +157,91 @@ degradación progresiva.
 
 ### 3.4 Tabla resumen
 
-| Escenario | VUs / patrón | Throughput | p90 | p95 | p99 | Error |
-|---|---|---:|---:|---:|---:|---:|
-| Sostenida | 0→150→0 (12 min) | 639,5 req/s | 4,33 ms | 5,32 ms | 7,05 ms | 0,00 % |
-| Spike | 0→750→0 (2 min) | 3 075,4 req/s | 4,39 ms | 5,54 ms | 12,19 ms | 0,00 % |
-| Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
+| Escenario | VUs / patrón | Throughput | Promedio | p90 | p95 | p99 | Error |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Sostenida | 0→150→0 (12 min) | 654,3 req/s | 3,3 ms | 5,7 ms | 7,0 ms | 10,0 ms | 0,00 % |
+| Spike (pico) | 0→750→0 (1 min 45 s + 2 min de recuperación) | ~4 140 req/s | 4,04 ms | 6,49 ms | 9,53 ms | 30,17 ms | 0,00 % |
+| Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | 88,0 ms | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
+
+**Códigos HTTP de error.** En los tres escenarios locales `http_req_failed` fue 0 %: no hubo
+ninguna respuesta 4xx ni 5xx (k6 cuenta como fallida toda respuesta ≥ 400). Cada
+iteración verifica además que el estado sea `200` (en el spike se acepta también `503`, que
+es la respuesta esperada si el Circuit Breaker se abre, y no se produjo). En las corridas de
+producción (§3.5) la tasa de error también fue 0,00 %. Los JSON de k6 no desglosan las
+respuestas por código, por lo que no hay tabla por código; con 0 % de fallos, todas las
+respuestas fueron 2xx.
+
+**Sobre la rampa del spike.** El enunciado pide subir "de inmediato" y bajar a 0 de inmediato. La
+prueba sube a 750 VUs en 10 s (75 VUs nuevos por segundo, frente a la rampa de 3 min de la carga
+sostenida) y baja en 5 s. No es un salto instantáneo, pero es una subida abrupta; el pico de
+1 min 30 s está dentro del rango pedido (1-2 min). La fase de recuperación, con 5 VUs, mide si
+el sistema vuelve a su estado normal (p95 y error por fase en el resumen de k6).
 
 ### 3.5 Producción (EC2) y comparativa con local
 
-Se repitió la carga sostenida contra la EC2 de producción (directo, sin Cloudflare), con
-`load-tests/run.sh` y `LOAD_SCALE` creciente (0,1 / 0,2 / 0,5 del perfil de 150 VUs; el
-smoke usa 2 VUs fijos). Resultados en `load-tests/production/`.
+Se repitieron los tres escenarios contra la EC2 de producción (directo, sin Cloudflare), con
+`load-tests/run.sh` y `LOAD_SCALE` creciente sobre el perfil local (0,1 / 0,2 / 0,5 / 0,7
+de los 150 VUs de la carga sostenida; 0,2 y 0,4 de los 750 VUs del spike; 0,1 del
+breakpoint). Resultados en `load-tests/production/`.
 
-| LOAD_SCALE | VUs | Throughput | Mediana | p95 | p99 | Error |
-|---|---:|---:|---:|---:|---:|---:|
-| 0,1 | 15 | 62,4 req/s | 105,8 ms | 112,0 ms | 122,5 ms | 0,00 % |
-| 0,2 | 30 | 125,2 req/s | 98,5 ms | 105,0 ms | 131,5 ms | 0,00 % |
-| 0,5 | 75 | 303,0 req/s | 105,6 ms | 209,9 ms | 346,6 ms | 0,00 % |
+| Escenario | VUs | Throughput | Promedio | p90 | p95 | p99 | Error |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Sostenida 0,1 | 15 | 62,4 req/s | 109,7 ms | 110,1 ms | 112,0 ms | 122,5 ms | 0,00 % |
+| Sostenida 0,2 | 30 | 125,2 req/s | 102,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 0,00 % |
+| Sostenida 0,5 | 75 | 303,0 req/s | 126,3 ms | 164,8 ms | 209,9 ms | 346,6 ms | 0,00 % |
+| Sostenida 0,7 | 105 | 388,2 req/s | 187,7 ms | 342,0 ms | 446,6 ms | 707,5 ms | 6,35 % |
+| Spike 0,2 | 150 | 450,2 req/s | 197,0 ms | 407,9 ms | 506,7 ms | 680,8 ms | 14,64 % |
+| Spike 0,4 | 300 | 589,4 req/s | 531,7 ms | 1 053,9 ms | 1 137,6 ms | 2 198,9 ms | 25,94 % |
+| Breakpoint 0,1 | 75 | 368,5 req/s | 134,1 ms | 191,2 ms | 289,4 ms | 505,1 ms | 1,49 % (corte) |
 
 ![Sostenida: local vs producción](../load-tests/comparativa/sustained_local_vs_produccion.png)
+![Tasa de error en producción](../load-tests/production/graficas/error_rate.png)
+![Spike en producción](../load-tests/production/graficas/spike.png)
+
+**Capacidad de la instancia.** La EC2 sostiene **~300 req/s (75 VUs) con 0,00 % de error y
+p95 de 210 ms** y satura entre 303 y 388 req/s. Con 105 VUs sostenidos el p95 (446,6 ms)
+sigue bajo 500 ms, pero el error sube a 6,35 %, por encima del 1 % que pide la rúbrica.
+En el spike la instancia no cae: sigue respondiendo y el throughput aún sube (450 → 589
+req/s), pero pierde entre 14,6 % y 25,9 % de las peticiones y con 300 VUs el p95 supera el
+umbral de 1 000 ms. El breakpoint se cortó solo (umbral de error) a los ~2 minutos, con
+1,49 % de error acumulado y un p95 de 289 ms: la saturación se manifiesta primero como
+peticiones fallidas y no como latencia.
+
+**Hallazgos sobre el comportamiento:**
 
 - **La latencia base es de red:** el mínimo ronda 86–107 ms (RTT de ~100 ms hasta la EC2),
-  frente a 5,3 ms de p95 en local; no son comparables 1 a 1.
-- **Con 0,5 aparece la primera degradación:** el throughput sigue casi lineal y la mediana
-  no cambia, pero el p95 se duplica (105→210 ms) y el p99 sube 2,6× (131→347 ms). Hay cola
-  en el servidor (CPU de la EC2, pool de conexiones o créditos de instancia); falta
-  confirmarlo con CloudWatch. Todas las corridas cumplen p95 < 500 ms y error < 1 %.
+  frente a 7,0 ms de p95 en local; no son comparables 1 a 1.
+- **Los errores son 502 del nginx de borde, no de la aplicación.** El `check` del escenario
+  acepta 200 y 503, y los fallos coinciden exactamente con las peticiones fallidas
+  (8 550 y 19 805), así que ninguna fue un 503 del Circuit Breaker. El log del nginx durante
+  la corrida muestra `connect() to <backend>:8080 failed (99: Address not available)` y la
+  respuesta `502` a esa misma petición: el nginx no logra abrir la conexión hacia el backend.
+  Es el agotamiento de puertos efímeros del contenedor del nginx, que abre una conexión TCP
+  nueva por cada petición (`proxy_pass` directo, sin `keepalive` hacia el backend ni HTTP/1.1)
+  y deja cada una en `TIME_WAIT`. Con el rango por defecto (~28 000 puertos) y 60 s de
+  `TIME_WAIT`, el techo teórico ronda los 470 conexiones por segundo, coherente con el
+  punto donde empiezan los errores (303–388 req/s). Los `499` del log son peticiones que k6
+  cerró al cortar la prueba. Que la causa sea esa se infiere del log y de la
+  configuración. La corrección (un `upstream` con `keepalive` y HTTP/1.1 hacia el backend)
+  ya está en las plantillas de nginx del repositorio, pero no se desplegó en la EC2 ni se
+  repitieron las corridas: las cifras de esta sección corresponden a la configuración anterior.
 - **Es un monolito en una sola instancia, la carga no se distribuye.** Todo el tráfico
-  entra a un único nodo (un contenedor backend, una JVM, un pool de conexiones y una EC2;
-  la BD es RDS, aparte). Por eso estas pruebas miden la capacidad *de una instancia*, y por
-  eso, al acercarse al límite, se ve una cola (el p95 y el p99 suben antes que la mediana)
-  y no errores. Además los seis endpoints de cada iteración comparten CPU y pool, de modo
-  que las consultas pesadas del tablero afectan a las ligeras. La diferencia con local no
-  es de arquitectura sino de tamaño de nodo y de red. Escalar horizontalmente es posible
-  (la sesión es una cookie JWT sin estado en el servidor), pero la caché Caffeine y el rate
+  entra a un único nodo (un contenedor backend con 1 GB de memoria, una JVM, un pool de 10
+  conexiones y una EC2; la BD es RDS, aparte). Por eso estas pruebas miden la capacidad *de
+  una instancia*, y los seis endpoints de cada iteración comparten CPU y pool. El log
+  del nginx indica que el primer límite alcanzado es la conexión nginx → backend, no la JVM;
+  la CPU, la memoria del contenedor y el pool de conexiones **no se midieron** en estas
+  corridas, así que no se sabe cuál limitaría después. Escalar horizontalmente es posible (la
+  sesión es una cookie JWT sin estado en el servidor), pero la caché Caffeine y el rate
   limiting de bucket4j son locales a cada instancia y habría que revisarlos antes de
-  agregar réplicas; mientras tanto, la vía inmediata es vertical (más vCPU/RAM y
-  `DB_POOL_MAX_SIZE`). Detalle en `load-tests/README.md`.
-- **Brechas frente al enunciado:** en producción se llegó a 75 VUs (se piden 100–200) y no
-  se corrieron spike ni breakpoint; esos resultados siguen siendo los de local.
+  agregar réplicas; la vía inmediata es vertical (más vCPU/RAM y `DB_POOL_MAX_SIZE`).
+- **Frente al enunciado.** La carga sostenida de producción llegó a 105 VUs (rango de 100 a
+  200) y el spike a 300 VUs, 4× los 75 VUs que la instancia sostiene sin errores (se piden
+  5–10×); el breakpoint se ejecutó y se cortó sin fijar el punto exacto, porque con
+  `LOAD_SCALE=0,1` el escenario ya arranca en ~300 req/s. El perfil completo (150 VUs
+  sostenidos, 750 en spike, breakpoint en ~4 500 req/s) corresponde al stack local, donde
+  se cumplen todos los umbrales de la rúbrica. La recuperación posterior al pico no se
+  midió por separado: el resumen agrega toda la prueba.
 
 El detalle completo, con las gráficas y los JSON crudos, vive en `load-tests/README.md`.
 
@@ -184,19 +259,30 @@ El detalle completo, con las gráficas y los JSON crudos, vive en `load-tests/RE
 - **Frontend en producción real:** Cloudflare Pages sirve la PWA desde su integración
   nativa de Git (build y despliegue por rama, *preview* automático por PR), verificado con
   `curl -I` contra el dominio real (200, con la CSP correcta en la respuesta).
-- **Pendiente real, no de alcance:** el job `deploy-backend` de `cd.yml` corre en verde
-  pero es un *no-op*: faltan las variables del Environment de GitHub
-  (`AWS_REGION`/`AWS_DEPLOY_ROLE_ARN`/`EC2_INSTANCE_ID`) para que
-  `deploy/scripts/setup-aws-oidc.sh` y `deploy/scripts/deploy.sh` se ejecuten contra una
-  instancia EC2 real. El dominio de la API en producción no resuelve por DNS todavía. Es
-  un trabajo de infraestructura concreto y acotado, no una carencia de diseño.
+- **Backend en producción (AWS):** el backend corre en una instancia EC2 con Docker Compose
+  y la base de datos en Amazon RDS for PostgreSQL. Delante va un nginx de borde que termina
+  TLS con el certificado de origen de Cloudflare, reenvía `/api/` al contenedor del
+  backend (la plantilla del repositorio ya usa un `upstream` con `keepalive`, pendiente de
+  desplegar; ver §3.5), protege Swagger UI con Basic Auth, aplica una CSP por ruta y expone `/healthz`. El dominio de la API resuelve a
+  través de Cloudflare, y las pruebas de carga de §3.5 se ejecutaron contra esta instancia.
+- **Despliegue y rollback:** `deploy/scripts/deploy.sh <entorno> [tag]` descarga la imagen
+  versionada, hace respaldo previo, levanta el servicio esperando los *healthchecks*,
+  verifica por el nginx y, si algo falla, vuelve solo a la última imagen buena. El mismo
+  script lo invoca el job `deploy-backend` de `cd.yml` (OIDC de AWS + SSM Run Command, sin
+  SSH) cuando el Environment de GitHub define `AWS_REGION`, `AWS_DEPLOY_ROLE_ARN` y
+  `EC2_INSTANCE_ID`; sin esas variables el job termina con una anotación de despliegue
+  omitido y el despliegue se hace ejecutando el script en la instancia. El rollback vuelve a
+  la imagen anterior, no al esquema (Flyway solo avanza), por lo que las migraciones siguen
+  el patrón *expand/contract*.
 
 ## 5. Conclusión
 
-Los cuatro entregables técnicos de la Fase 4 están cubiertos con evidencia verificable y
-ejecutada, no solo declarada: autenticación JWT con cookie `HttpOnly` y autorización por
-rol en el backend; una suite de pruebas real y con cobertura medida; dos escenarios de
-carga que cumplen los parámetros mínimos del enunciado más un tercero que identifica el
-punto de ruptura exacto; y un pipeline de CI/CD que efectivamente construye, prueba y
-publica versiones reales. El único punto abierto — el despliegue del backend en AWS — es
-un trabajo de infraestructura pendiente y ya documentado, no una omisión técnica.
+Los cuatro entregables técnicos de la Fase 4 están cubiertos con evidencia ejecutada:
+autenticación JWT con cookie `HttpOnly` y autorización por rol en el backend; una suite de
+139 pruebas con cobertura medida y una prueba que verifica el contrato OpenAPI; pruebas de
+carga con los dos escenarios que pide el enunciado más un punto de ruptura, que cumplen
+todos los umbrales en el entorno local y que en producción miden la capacidad de una sola
+instancia (~300 req/s sin errores) y localizan su primer límite en la conexión del nginx
+hacia el backend, con una corrección ya preparada en las plantillas de despliegue; y un
+pipeline de CI/CD que construye, prueba y publica versiones, con el backend desplegado en
+AWS y un procedimiento de despliegue con rollback.

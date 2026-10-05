@@ -10,6 +10,9 @@
 # Variables opcionales:
 #   POSTGRES_CONTAINER  contenedor de PostgreSQL para contar consultas (solo con BD en contenedor)
 #   SKIP_WAIT=1         omite la espera de 65 s de la ventana del rate limiting
+#   ONLY=ratelimit|cache  ejecuta solo esa parte (por defecto, las dos). En produccion conviene
+#                       el rate limiting desde fuera de la VM y la cache desde la propia VM, donde
+#                       el RTT de red (~100 ms) no oculta la diferencia de milisegundos.
 #   INVOICES            cuantas facturas leer (por defecto 20)
 # El rate limiting usa usuarios inventados (usuario_prueba...): el limite es por IP + usuario, asi
 # que NO bloquea al admin. Para que la caché arranque fria en un stack local, reinicia el backend.
@@ -18,8 +21,10 @@ set -euo pipefail
 BASE="${BASE_URL:?define BASE_URL}"; BASE="${BASE%/}"
 PW="${ADMIN_PASSWORD:?define ADMIN_PASSWORD}"
 N="${INVOICES:-20}"
+ONLY="${ONLY:-all}"
 CURL=(curl -s); [ "${INSECURE_TLS:-}" = "true" ] && CURL+=(-k)
 
+if [ "$ONLY" != cache ]; then
 echo "=== 1) Rate limiting del login (5 intentos / 60 s por IP + usuario) ==="
 login() { "${CURL[@]}" -o /dev/null -w "$1 -> %{http_code}\n" -X POST "$BASE/api/v1/auth/login" \
   -H 'Content-Type: application/json' -d "{\"username\":\"$2\",\"password\":\"incorrecta\"}"; }
@@ -31,6 +36,9 @@ if [ "${SKIP_WAIT:-0}" != "1" ]; then
 fi
 echo "esperado: 401 x5, 429 x3, 401 para otro usuario y 401 (no 429) tras la ventana"
 
+fi
+
+if [ "$ONLY" != ratelimit ]; then
 echo
 echo "=== 2) Cache Aside de las lineas de factura ==="
 J="$(mktemp)"; trap 'rm -f "$J"' EXIT
@@ -61,3 +69,4 @@ if [ -n "${POSTGRES_CONTAINER:-}" ]; then
   echo "esperado: una consulta por factura (solo la pasada fria) = $(echo "$IDS" | grep -c .)"
 fi
 echo "esperado: la pasada 1 es la mas lenta; las 2 y 3 salen de memoria (si la cache ya estaba caliente, reinicia el backend)"
+fi

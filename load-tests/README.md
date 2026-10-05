@@ -259,6 +259,39 @@ un escalón (1 min). Cautela: en ese escalón se alcanzó el tope de 200 VUs del
 descartadas), así que una parte del déficit entre objetivo y efectivo puede venir del generador; el salto del
 p95, en cambio, es del servidor.
 
+### Recursos durante las corridas (producción)
+
+| Corrida (ventana) | CPU de la VM (prom. / máx.) | CPU del backend, % de un núcleo (prom. / máx.) | Memoria del backend (prom.) | CPU del nginx (prom. / máx.) | `TIME_WAIT` del nginx (máx.) |
+|---|---:|---:|---:|---:|---:|
+| Reposo (previo a la tanda) | 3,3 % / 5,5 % | 0,9 % / 3,2 % | 787 MB | 0,2 % / 2,4 % | 8 |
+| Sostenida 75 VUs (meseta de 7 min) | 27,9 % / 30,7 % | 40,4 % / 47,0 % | 793 MB | 6,6 % / 10,1 % | 103 |
+| **Sostenida 150 VUs (meseta de 7 min)** | **50,6 % / 53,1 %** | 76,3 % / 96,9 % | 806 MB | 12,5 % / 15,9 % | 826 |
+| Spike 503 VUs (pico de 1 min 45 s) | 90,8 % / **100,0 %** | 126,2 % / 155,8 % | 811 MB | 47,5 % / 100,9 % | 17 385 |
+| Spike 750 VUs (pico de 1 min 45 s) | 88,1 % / 99,6 % | 135,4 % / 156,8 % | 804 MB | 33,3 % / 60,0 % | 10 647 |
+| Breakpoint (escalones de 1 min) | 39,3 % / 95,6 % | 57,9 % / 146,0 % | 793 MB | 10,3 % / 35,6 % | 619 |
+
+Medido con `load-tests/monitor.sh` cada 5 s en la EC2 durante toda la tanda (CSV en
+`load-tests/production/recursos-produccion.csv`; 415 muestras, de 03:45 a 04:34 UTC). Las ventanas se
+calculan con la hora de inicio de cada corrida de k6.
+
+![Recursos de la EC2 durante las corridas](production/graficas/recursos-produccion.png)
+
+- **Carga sostenida (150 VUs): margen amplio.** La CPU de la VM ronda el 51 % (máximo 53 %) y el backend usa
+  el 76 % de un núcleo; con 75 VUs, el 28 % y el 40 %. El sistema no está cerca de su límite con la carga
+  que exige el enunciado.
+- **El recurso que se agota es la CPU de la instancia.** En los dos picos del spike la CPU de la VM llega al
+  100 % (promedio de 88–91 %) y el backend a ~156 % de un núcleo (la instancia tiene al menos 2 vCPU); en el
+  breakpoint la VM llega al 95,6 % justo en el escalón en que el p95 se dispara. Es una correlación temporal,
+  no un experimento, pero coincide con la degradación de latencia (p95 de 876–1 116 ms en el pico) y con
+  el 0,7–0,8 % de peticiones sin respuesta.
+- **La memoria no limita.** El heap del backend se mantiene en 787–814 MB sobre el límite de 1 GB durante los
+  49 minutos (sin crecimiento, lo que descarta una fuga), y no hubo reinicios ni `OOMKilled`.
+- **Los sockets del nginx no se agotan.** Los `TIME_WAIT` suben hasta 17 385 en el pico del spike, por debajo
+  del rango de puertos efímeros (~28 000), y se mantienen en cientos con la carga sostenida.
+- **Base de datos (RDS): sin medir.** El monitor solo ve contenedores y RDS es un servicio aparte; su CPU y sus
+  conexiones se obtienen de CloudWatch y no se capturaron. Como referencia, el PostgreSQL local usó ~32 % de
+  CPU con los mismos 150 VUs (sección 3.1).
+
 ### Comparativa local vs producción (sostenida, mismos 150 VUs)
 
 ![Local vs producción](comparativa/sustained_local_vs_produccion.png)
@@ -280,10 +313,8 @@ La diferencia de latencia es sobre todo el RTT de red (~100 ms hasta la EC2; el 
   (p95 de 122 ms con 150 VUs).
 - **Capacidad medida de la instancia:** ~590 req/s sostenidos (150 VUs) sin errores y p95 de 122 ms, con un
   techo efectivo de ~970 req/s a partir del cual el p95 se degrada.
-- **Recursos:** tras toda la tanda el backend tiene 0 reinicios y `OOMKilled=false` (`docker inspect` del
-  contenedor de producción). La CPU, la memoria y la base de datos de la EC2 durante las corridas **no están
-  medidas** en este reporte; las medidas completas son las del stack local (ver arriba), donde el backend
-  consume casi un núcleo y la memoria es estable.
+- **Recursos:** ver la tabla de arriba: con 150 VUs la VM está a ~51 % de CPU y el backend a 806 MB de 1 GB;
+  la CPU de la instancia es lo que se agota en los picos. Sin reinicios ni `OOMKilled`. La base de datos RDS no se midió.
 - Hay outliers aislados (hasta 3,5 s en la sostenida y 30 s en un spike, de una petición entre cientos de
   miles) sin errores asociados.
 - Desde esta ronda las peticiones del tablero llevan `tags: { name: ... }` y no hay aviso de cardinalidad

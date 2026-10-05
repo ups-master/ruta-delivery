@@ -9,10 +9,12 @@ import glob
 import json
 import os
 import re
+from datetime import datetime, timedelta
 
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
 AZUL, NARANJA, GRIS, ROJO = "#1565c0", "#ef6c00", "#9e9e9e", "#c62828"
@@ -175,7 +177,7 @@ for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recurs
     filas = list(csv.DictReader(open(f)))
     if len(filas) < 2:
         continue
-    t = [(i * 1.0) for i in range(len(filas))]
+    t = [datetime.strptime(r["ts_utc"], "%Y-%m-%dT%H:%M:%SZ") for r in filas]
     t0 = filas[0]["ts_utc"]
     num = lambda c: [float(r[c]) if r.get(c) not in (None, "") else float("nan") for r in filas]
     con_bd = any(r.get("db_connections") not in (None, "") for r in filas)
@@ -186,7 +188,7 @@ for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recurs
     axs[1].plot(t, num("backend_mem_mb"), color=AZUL, label="backend")
     axs[1].plot(t, num("nginx_mem_mb"), color=NARANJA, label="nginx")
     axs[1].axhline(1024, color="#c62828", ls="--", lw=1)
-    axs[1].text(0, 1024, "límite del backend (1 GB)", color="#c62828", fontsize=8, va="bottom")
+    axs[1].text(0.01, 1024, "límite del backend (1 GB)", transform=axs[1].get_yaxis_transform(), color="#c62828", fontsize=8, va="bottom")
     axs[1].set_ylabel("Memoria (MB)"); axs[1].legend(loc="center left")
     axs[2].plot(t, num("nginx_timewait"), color="#6a1b9a")
     axs[2].set_ylabel("TIME_WAIT (nginx)")
@@ -197,7 +199,20 @@ for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recurs
         ax2.plot(t, num("db_connections"), color="#c62828", label="conexiones abiertas")
         ax2.set_ylabel("conexiones abiertas")
         axs[3].legend(loc="upper left"); ax2.legend(loc="upper right")
-    axs[-1].set_xlabel(f"muestras (desde {t0})")
+    axs[-1].set_xlabel("hora (UTC)")
+    axs[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    if carpeta_salida.startswith("production"):
+        # sombrea cada corrida (inicio = marca de tiempo del JSON; duración = peticiones / req/s)
+        for jf in sorted(glob.glob("production/production-*.json")):
+            mt = re.search(r"production-(\w+?)-([\d.]+)-(\d{8}T\d{6}Z)", jf)
+            if not mt or mt.group(1) == "smoke":
+                continue
+            ini = datetime.strptime(mt.group(3), "%Y%m%dT%H%M%SZ")
+            rq = metrics(jf)["http_reqs"]
+            fin = ini + timedelta(seconds=rq["count"] / rq["rate"])
+            for ax in axs:
+                ax.axvspan(ini, fin, color=GRIS, alpha=0.12)
+            axs[0].text(ini, 0.97, f" {mt.group(1)} {mt.group(2)}", transform=axs[0].get_xaxis_transform(), fontsize=7, va="top", ha="left")
     for ax in axs:
         ax.grid(alpha=0.3)
     nombre = os.path.basename(f)[:-4]

@@ -132,8 +132,8 @@ primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni
 
 ![Recursos durante la carga sostenida (local)](../load-tests/local/graficas/recursos-sostenida-1.0.png)
 
-La base de datos de producción (RDS) y la instancia EC2 se miden con CloudWatch en las corridas de la
-sección 3.5.
+La CPU y la memoria de la EC2 durante las corridas de producción están en la sección 3.5; la base de datos
+de producción (RDS) no se midió.
 
 ### 3.2 Pico extremo (Spike Testing)
 
@@ -237,6 +237,39 @@ HTTP: se degrada en latencia, no cae.** Resolución de un escalón (1 min); en e
 el tope de 200 VUs del escenario, así que parte de la diferencia entre objetivo y throughput efectivo puede
 venir del generador de carga.
 
+**Recursos durante las corridas (producción).**
+
+| Corrida (ventana) | CPU de la VM (prom. / máx.) | CPU del backend, % de un núcleo (prom. / máx.) | Memoria del backend (prom.) | CPU del nginx (prom. / máx.) | `TIME_WAIT` del nginx (máx.) |
+|---|---:|---:|---:|---:|---:|
+| Reposo (previo a la tanda) | 3,3 % / 5,5 % | 0,9 % / 3,2 % | 787 MB | 0,2 % / 2,4 % | 8 |
+| Sostenida 75 VUs (meseta de 7 min) | 27,9 % / 30,7 % | 40,4 % / 47,0 % | 793 MB | 6,6 % / 10,1 % | 103 |
+| **Sostenida 150 VUs (meseta de 7 min)** | **50,6 % / 53,1 %** | 76,3 % / 96,9 % | 806 MB | 12,5 % / 15,9 % | 826 |
+| Spike 503 VUs (pico de 1 min 45 s) | 90,8 % / **100,0 %** | 126,2 % / 155,8 % | 811 MB | 47,5 % / 100,9 % | 17 385 |
+| Spike 750 VUs (pico de 1 min 45 s) | 88,1 % / 99,6 % | 135,4 % / 156,8 % | 804 MB | 33,3 % / 60,0 % | 10 647 |
+| Breakpoint (escalones de 1 min) | 39,3 % / 95,6 % | 57,9 % / 146,0 % | 793 MB | 10,3 % / 35,6 % | 619 |
+
+Medido con `load-tests/monitor.sh` cada 5 s en la EC2 durante toda la tanda (CSV en
+`load-tests/production/recursos-produccion.csv`; 415 muestras, de 03:45 a 04:34 UTC). Las ventanas se
+calculan con la hora de inicio de cada corrida de k6.
+
+![Recursos de la EC2 durante las corridas](../load-tests/production/graficas/recursos-produccion.png)
+
+- **Carga sostenida (150 VUs): margen amplio.** La CPU de la VM ronda el 51 % (máximo 53 %) y el backend usa
+  el 76 % de un núcleo; con 75 VUs, el 28 % y el 40 %. El sistema no está cerca de su límite con la carga
+  que exige el enunciado.
+- **El recurso que se agota es la CPU de la instancia.** En los dos picos del spike la CPU de la VM llega al
+  100 % (promedio de 88–91 %) y el backend a ~156 % de un núcleo (la instancia tiene al menos 2 vCPU); en el
+  breakpoint la VM llega al 95,6 % justo en el escalón en que el p95 se dispara. Es una correlación temporal,
+  no un experimento, pero coincide con la degradación de latencia (p95 de 876–1 116 ms en el pico) y con
+  el 0,7–0,8 % de peticiones sin respuesta.
+- **La memoria no limita.** El heap del backend se mantiene en 787–814 MB sobre el límite de 1 GB durante los
+  49 minutos (sin crecimiento, lo que descarta una fuga), y no hubo reinicios ni `OOMKilled`.
+- **Los sockets del nginx no se agotan.** Los `TIME_WAIT` suben hasta 17 385 en el pico del spike, por debajo
+  del rango de puertos efímeros (~28 000), y se mantienen en cientos con la carga sostenida.
+- **Base de datos (RDS): sin medir.** El monitor solo ve contenedores y RDS es un servicio aparte; su CPU y sus
+  conexiones se obtienen de CloudWatch y no se capturaron. Como referencia, el PostgreSQL local usó ~32 % de
+  CPU con los mismos 150 VUs (sección 3.1).
+
 **Comparativa con local (sostenida, mismos 150 VUs).**
 
 | | Local | Producción |
@@ -255,9 +288,6 @@ venir del generador de carga.
   un techo efectivo de ~970 req/s. Escalar horizontalmente es posible (la sesión es una cookie JWT sin estado
   en el servidor), pero la caché Caffeine y el rate limiting de bucket4j son locales a cada instancia y habría
   que revisarlos antes de agregar réplicas; la vía inmediata es vertical (más vCPU/RAM y `DB_POOL_MAX_SIZE`).
-- **Recursos.** En producción solo se comprobó que el backend no tuvo reinicios ni `OOMKilled`; la CPU, la
-  memoria y la base de datos (RDS) de la EC2 **no se midieron** durante estas corridas. Las medidas completas
-  (CPU, memoria y PostgreSQL en la meseta de 150 VUs) son las de la sección 3.1, en el stack local.
 
 ### 3.6 Cumplimiento del enunciado
 
@@ -266,7 +296,7 @@ venir del generador de carga.
 | Sostenida: 100–200 VUs; subida de 2–3 min, meseta de 5–10 min, bajada de 1–2 min | 0→150 VUs en 3 min, 7 min de meseta, 2 min de bajada (local y producción) | ✅ |
 | Sostenida: error < 1 % (nivel Excelente) | 0,00 % en local y en producción (150 VUs) | ✅ |
 | Sostenida: p95 < 500 ms | 7,0 ms local; 122,2 ms producción | ✅ |
-| Sostenida: estabilidad de CPU, memoria y base de datos | Local: medidos (§3.1). Producción: solo reinicios y `OOMKilled` | ⚠️ parcial |
+| Sostenida: estabilidad de CPU, memoria y base de datos | CPU y memoria medidas en producción (VM ~51 %, backend 806 MB de 1 GB, sin reinicios) y en local (§3.1, con PostgreSQL ~32 %). Falta la CPU y las conexiones de RDS (CloudWatch) | ⚠️ parcial (BD de producción sin medir) |
 | Spike: 5–10× la carga normal | 750 VUs = 5× la meseta de 150 (local); 503 y 750 VUs = 6,7× y 10× los 75 VUs de carga normal (producción) | ✅ |
 | Spike: subida abrupta, pico de 1–2 min, bajada a 0 inmediata | 10 s de subida, 1 min 30 s, 5 s de bajada | ✅ (no es un salto instantáneo) |
 | Spike: análisis de recuperación | Fase de 2 min: p95 104–105 ms y 0 % de error en producción; 6,65 ms y 0 % en local | ✅ |
@@ -319,5 +349,5 @@ desplegado en AWS y un procedimiento de despliegue con rollback.
 En local se cumplen todos los umbrales con el perfil completo (150 VUs sostenidos y 750 en el spike, 0 % de
 error). En producción, la carga sostenida de 150 VUs cumple los umbrales (0,00 % de error, p95 de 122 ms) y
 el spike de hasta 750 VUs mantiene el error bajo el 1 % y se recupera solo (p95 de 104 ms, 0 % de error);
-el punto de ruptura es de ~970 req/s efectivos. Lo que no está cubierto en producción es la medición de CPU,
-memoria y base de datos durante las corridas, que se documenta solo para el stack local.
+el punto de ruptura es de ~970 req/s efectivos. Durante las corridas se midieron la CPU y la memoria de la EC2 (la CPU de la instancia es el
+recurso que se agota en los picos; la memoria se mantiene plana); la base de datos RDS no se midió.

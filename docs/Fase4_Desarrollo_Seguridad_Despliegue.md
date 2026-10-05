@@ -280,8 +280,11 @@ calculan con la hora de inicio de cada corrida de k6.
 
 ![Sostenida: local vs producción](../load-tests/comparativa/sustained_local_vs_produccion.png)
 
-- **La latencia base es de red:** el mínimo ronda 86–90 ms (RTT de ~100 ms hasta la EC2), frente a 7,0 ms de
-  p95 en local; por eso no son comparables 1 a 1. La forma sí lo es: ambos cumplen los umbrales con la misma carga.
+- **Latencia base:** el mínimo por petición ronda 86–90 ms en producción, frente a 7,0 ms de p95 en local; no son
+  comparables 1 a 1 (en local no hay red de por medio). No se ha separado cuánto de esa base es red y cuánto
+  servidor: una medición puntual desde otra máquina dio ~5 ms de tiempo hasta el primer byte para `/healthz` y
+  ~8 ms para la lectura de líneas de factura (§3.7), así que la latencia de las corridas de carga no se explica
+  solo por la distancia. La forma sí es comparable: ambos cumplen los umbrales con la misma carga.
 - **Es un monolito en una sola instancia, la carga no se distribuye.** Todo el tráfico entra a un único nodo
   (un contenedor backend con 1 GB de memoria, una JVM, un pool de 10 conexiones y una EC2; la BD es RDS,
   aparte), así que estas pruebas miden la capacidad *de una instancia*: ~590 req/s sostenidos con error 0 % y
@@ -300,7 +303,7 @@ calculan con la hora de inicio de cada corrida de k6.
 | Spike: 5–10× la carga normal | 750 VUs = 5× la meseta de 150 (local); 503 y 750 VUs = 6,7× y 10× los 75 VUs de carga normal (producción) | ✅ |
 | Spike: subida abrupta, pico de 1–2 min, bajada a 0 inmediata | 10 s de subida, 1 min 30 s, 5 s de bajada | ✅ (no es un salto instantáneo) |
 | Spike: análisis de recuperación | Fase de 2 min: p95 104–105 ms y 0 % de error en producción; 6,65 ms y 0 % en local | ✅ |
-| Spike: caché, rate limiting y autoescalado | Caché (0 consultas a la BD con caché caliente) y rate limiting (429 tras 5 intentos) comprobados en local (§3.7). No hay autoescalado: una sola instancia, con propuesta en §3.8 | ✅ caché y rate limiting (local) · ⚠️ autoescalado no implementado |
+| Spike: caché, rate limiting y autoescalado | Caché (0 consultas a la BD con caché caliente en local; ~0,1 ms de servidor en producción) y rate limiting (429 tras 5 intentos, en local y en producción) comprobados (§3.7). No hay autoescalado: una sola instancia, con propuesta en §3.8 | ✅ caché y rate limiting (local y producción) · ⚠️ autoescalado no implementado |
 | Rendimiento (RPS) | En cada tabla | ✅ |
 | Latencia: promedio, p90, p95, p99 | En cada tabla | ✅ |
 | Tasa de error y códigos HTTP | Error en cada tabla; conteo por código (200, `status 0`) | ✅ |
@@ -341,8 +344,34 @@ tres veces seguidas y se contó cuántas consultas llegaron a la tabla `delivery
 
 Repetido por separado: 40 lecturas con la caché caliente generaron **0 consultas** a la base de datos, y 20
 facturas nuevas, **20**. La diferencia de latencia es pequeña porque en local la base de datos está al lado; el
-efecto real es que las lecturas repetidas dejan de cargar la base de datos. Esta comprobación se hizo en local; el
-mismo script puede ejecutarse contra la EC2 (`BASE_URL`, `INSECURE_TLS=true`), donde no se ha ejecutado.
+efecto real es que las lecturas repetidas dejan de cargar la base de datos. Esta primera tabla es del stack local; la
+siguiente es la misma comprobación contra la EC2.
+
+**Comprobación contra producción (EC2, desde fuera, por la IP pública).** Se ejecutaron los mismos pasos con
+`curl` desde otra máquina (un solo cliente, `INSECURE_TLS`):
+
+| Intento (rate limiting) | Respuesta |
+|---|---|
+| 1 a 5 (usuario_prueba) | 401 |
+| 6 a 8 (usuario_prueba) | **429** |
+| Otro usuario desde la misma IP | 401 |
+| Tras 65 s (usuario_prueba) | 401 |
+
+El comportamiento es idéntico al del stack local. Para la caché no hay acceso a las consultas de la base de
+datos (RDS), así que se midió el tiempo hasta el primer byte (conexión reutilizada, 20 facturas) y se descontó el
+de `/healthz`, que responde el nginx sin tocar la aplicación:
+
+| Medición | Tiempo hasta el primer byte | Tiempo del servidor (descontando `/healthz`) |
+|---|---:|---:|
+| `/healthz` (referencia) | 5,0 ms | — |
+| Líneas de factura, pasada 1 (caché vacía) | 7,7 ms | ≈ 2,7 ms |
+| Líneas de factura, pasada 2 (caché caliente) | 5,2 ms | ≈ 0,2 ms |
+| Líneas de factura, pasada 3 (caché caliente) | 5,1 ms | ≈ 0,1 ms |
+
+Con la caché caliente el servidor responde las líneas casi sin coste, y la lectura fría cuesta ~2,5 ms más,
+que es el viaje a la base de datos. Es una sola serie de 20 peticiones por pasada y no se caracterizó el ruido, así
+que se toma como consistente con la caché y no como una medida precisa; la prueba directa es el conteo de
+consultas a la tabla del stack local.
 
 ### 3.8 Escalado y autoescalado (propuesta, no implementada)
 

@@ -304,13 +304,14 @@ calculan con la hora de inicio de cada corrida de k6.
 | Errores | 0 % | 0 % |
 
 Con la misma carga y el mismo perfil de prueba, ambos cumplen los umbrales (error < 1 %, p95 < 500 ms).
-La diferencia de latencia es sobre todo el RTT de red (~100 ms hasta la EC2; el mínimo de las corridas es
-~86 ms) más el nginx; local corre en la red de Docker, sin red de por medio.
+La diferencia de latencia no está desglosada entre red y servidor: local corre en la red de Docker, sin red de
+por medio, y el mínimo de las corridas en producción es de ~86 ms. Una medición puntual desde otra máquina dio ~5 ms
+de tiempo hasta el primer byte para `/healthz`, así que no se atribuye solo a la distancia.
 
 **Lectura:**
 
-- La latencia base es el RTT de red (mínimo ~86 ms): hasta 150 VUs el backend aporta poco por encima de él
-  (p95 de 122 ms con 150 VUs).
+- La latencia base de las corridas es de ~86 ms por petición (mínimo) y el p95 es de 122 ms con 150 VUs: hasta esa
+  carga la latencia casi no crece por encima de la base.
 - **Capacidad medida de la instancia:** ~590 req/s sostenidos (150 VUs) sin errores y p95 de 122 ms, con un
   techo efectivo de ~970 req/s a partir del cual el p95 se degrada.
 - **Recursos:** ver la tabla de arriba: con 150 VUs la VM está a ~51 % de CPU y el backend a 806 MB de 1 GB;
@@ -342,7 +343,7 @@ el código de negocio corre en un único proceso. No hay balanceador ni réplica
   no se puede atribuir la cola a una ruta concreta (ver pendientes).
 - **Por qué el local aguantó ~4 500 req/s y la EC2 menos.** Ambos son un solo nodo, pero el
   local es una máquina de desarrollo con CPU holgada y sin red de por medio; la EC2 es una
-  instancia mucho más pequeña con ~100 ms de RTT. La comparación mide *tamaño de nodo*, no
+  instancia mucho más pequeña, accedida por red. La comparación mide *tamaño de nodo*, no
   un cambio de arquitectura.
 - **El generador también es un solo punto.** k6 corre desde una única máquina y una única
   ruta de red, así que parte de la cola y de los outliers de conexión puede venir del lado
@@ -441,7 +442,11 @@ BASE_URL=https://<ip-ec2> INSECURE_TLS=true ADMIN_PASSWORD=<...> load-tests/veri
 ```
 
 Usa usuarios inventados para el rate limiting, así que no bloquea al admin; a esa IP le bloquea un minuto los
-intentos de esos usuarios. Resultado local en la Fase 4 (§3.7).
+intentos de esos usuarios. Resultados local y de producción en la Fase 4 (§3.7).
+
+Contra la EC2 desde fuera, donde la red añade ruido, la caché se mide con el tiempo hasta el primer byte
+(`%{time_starttransfer} - %{time_pretransfer}` de `curl`, una sola conexión para las 20 facturas) y se resta el de
+`/healthz` (que no toca la aplicación); ver §3.7 de la Fase 4.
 
 ## Procedimiento de corridas en producción (EC2)
 

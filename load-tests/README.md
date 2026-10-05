@@ -393,12 +393,16 @@ no subas a git los de `results/` tal cual.
 ## Procedimiento de corridas en producción (EC2)
 
 Orden recomendado tras desplegar el `upstream` con `keepalive` del nginx (la plantilla se monta desde el
-checkout del repo en la VM, no va en la imagen):
+checkout del repo en la VM, no va en la imagen; no hace falta reconstruir ni redesplegar el backend). Para que
+el cambio sea permanente la rama debe llegar a `main`: un despliegue posterior que haga checkout de un
+commit sin ella devolvería la plantilla anterior:
 
 ```bash
-# En la EC2: traer la rama y recrear SOLO el nginx
+# En la EC2: traer la rama y recrear SOLO el nginx. --force-recreate es necesario: la plantilla se
+# procesa al arrancar el contenedor, y un `up -d nginx` a secas no detecta que el archivo cambio.
 git fetch && git checkout <rama>
-docker compose -f deploy/docker-compose.yml --env-file deploy/env/production.env up -d nginx
+docker compose -f deploy/docker-compose.yml --env-file deploy/env/production.env up -d --force-recreate nginx
+docker exec <nginx> sh -c 'grep -n "upstream\|keepalive" /etc/nginx/conf.d/default.conf'   # debe mostrar el upstream
 docker exec <nginx> nginx -t && curl -k https://<ip>/healthz
 ```
 

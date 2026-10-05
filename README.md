@@ -576,6 +576,9 @@ seguridad recomendada para builds reproducibles.
 
 ## Documentación
 
+Para poner en marcha la aplicación y demostrar su funcionamiento paso a paso (interfaz, API con `curl`, seguridad,
+resiliencia y pruebas), ver [`docs/GUIA_DE_USO_Y_DEMOSTRACION.md`](docs/GUIA_DE_USO_Y_DEMOSTRACION.md).
+
 `docs/` incluye el documento de negocio (`Fase1_Vision_Producto_Modelo_Negocio_API_Final.md`),
 el de arquitectura y patrones (`Fase2_Arquitectura_Patrones_API.md`), el de modelo de recursos y
 contrato de la API (`Fase3_Modelo_Datos_Especificacion_API.md`) y el de desarrollo,

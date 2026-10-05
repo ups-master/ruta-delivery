@@ -114,7 +114,7 @@ que pide el enunciado (100-200 VUs, ramp-up 2-3 min, meseta 5-10 min, ramp-down 
 
 ### 3.2 Pico extremo (Spike Testing)
 
-0→750 VUs (10x la meseta sostenida) en 30s, meseta de 1 min, bajada a 0 en 30s — dentro
+0→750 VUs (5x la meseta sostenida de 150 VUs) en 30s, meseta de 1 min, bajada a 0 en 30s — dentro
 del rango que pide el enunciado (5-10x la carga normal, pico de 1-2 min).
 **3 075,4 req/s, p95 = 5,54 ms, p99 = 12,19 ms, 0,00 % de error** (403 397 peticiones); el
 Circuit Breaker queda `CLOSED` sin ninguna llamada rechazada, sin señal de saturación.

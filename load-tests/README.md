@@ -95,7 +95,7 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 
 ### Pico extremo (Spike Testing)
 
-0→750 VUs (10x la meseta sostenida) en 30s, meseta de 1 min, bajada a 0 en 30s (dentro del
+0→750 VUs (5x la meseta sostenida de 150 VUs) en 30s, meseta de 1 min, bajada a 0 en 30s (dentro del
 rango mínimo exigido: 5-10x la carga normal, pico de 1-2 min).
 
 ```bash

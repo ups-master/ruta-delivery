@@ -11,9 +11,8 @@
 # Columnas del CSV (hora en UTC):
 #   ts_utc, host_cpu_pct, host_mem_used_mb, backend_cpu_pct, backend_mem_mb, nginx_cpu_pct,
 #   nginx_mem_mb, nginx_timewait, db_cpu_pct, db_mem_mb, db_connections
-# nginx_timewait = sockets TCP en TIME_WAIT dentro del contenedor del nginx: si se acerca a
-# ~28 000 (rango de puertos efimeros por defecto) el nginx se queda sin puertos para abrir
-# conexiones hacia el backend (502 "connect() failed (99: Address not available)").
+# nginx_timewait = sockets TCP en TIME_WAIT dentro del contenedor del nginx (indicador de presion
+# sobre los puertos efimeros, ~28 000 por defecto).
 #
 # Al detenerlo imprime: reinicios y OOMKilled del backend, y el conteo de codigos HTTP del log
 # del nginx en la ventana medida (verificacion cruzada de la tabla de codigos de k6).

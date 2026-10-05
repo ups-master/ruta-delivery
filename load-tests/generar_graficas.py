@@ -1,22 +1,23 @@
-"""Genera las gráficas de producción y la comparativa local vs producción.
+"""Genera las gráficas de producción, las locales y la comparativa local vs producción.
 
 Uso (desde load-tests/):  python3 generar_graficas.py   (requiere matplotlib)
-Lee local/results-*.json y production/production-*.json (sustained, spike y
-breakpoint) y production/recursos-*.csv y local/recursos-*.csv (salida de monitor.sh); escribe en
-production/graficas/, local/graficas/ (sostenida y spike) y comparativa/.
+Lee local/results-*.json y production/production-*.json (sustained, spike y breakpoint),
+además de production/recursos-*.csv y local/recursos-*.csv (salida de monitor.sh). Escribe en production/graficas/, local/graficas/ y comparativa/.
 """
 import csv
 import glob
 import json
 import os
 import re
+from datetime import datetime, timedelta
 
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
-AZUL, NARANJA, GRIS = "#1565c0", "#ef6c00", "#9e9e9e"
+AZUL, NARANJA, GRIS, ROJO = "#1565c0", "#ef6c00", "#9e9e9e", "#c62828"
 
 
 def metrics(path):
@@ -26,11 +27,17 @@ def metrics(path):
 def row(path):
     m = metrics(path)
     d = m["http_req_duration"]
+    pico = m.get("http_req_failed{phase:peak}")
+    n_pico = pico["passes"] + pico["fails"] if pico else None
     return {
         "vus": m["vus_max"]["max"], "rps": m["http_reqs"]["rate"],
-        "p95": d["p(95)"], "p99": d.get("p(99)"), "med": d["med"],
-        "err": m["http_req_failed"]["value"] * 100,
+        "rps_pico": n_pico / PICO_S if n_pico else None,
+        "avg": d["avg"], "p90": d["p(90)"], "p95": d["p(95)"], "p99": d.get("p(99)"), "med": d["med"],
+        "err": (pico["value"] if pico else m["http_req_failed"]["value"]) * 100, "m": m,  # en spike, el error del pico
     }
+
+
+PICO_S = 105  # duración de la fase de pico de spike.js (10 s + 1 min 30 s + 5 s)
 
 
 def barras(ax, etiquetas, valores, color, fmt, titulo):
@@ -52,77 +59,117 @@ def guardar(fig, carpeta, nombre):
     plt.close(fig)
 
 
-# --- producción: sustained por LOAD_SCALE ---
-prod = {}
-for f in sorted(glob.glob("production/production-sustained-*.json")):
-    prod[re.search(r"sustained-([\d.]+)-", f).group(1)] = row(f)
-escalas = sorted(prod, key=float)
-et = [f"{e}\n({prod[e]['vus']} VUs)" for e in escalas]
+def cargar(carpeta, fuente):
+    """{(tipo, escala): fila} de los resúmenes de producción de una carpeta."""
+    out = {}
+    for f in sorted(glob.glob(f"{carpeta}/production-*.json")):
+        t = re.search(r"production-(\w+?)-([\d.]+)-", f)
+        if t and t.group(1) != "smoke":
+            r = row(f)
+            r["fuente"] = fuente
+            out[(t.group(1), t.group(2))] = r
+    return out
 
-for nombre, clave, fmt, titulo, color in [
-    ("throughput", "rps", "{:.0f} req/s", "Throughput en producción (sustained)", AZUL),
-    ("p95", "p95", "{:.0f} ms", "Latencia p95 en producción (sustained)", NARANJA),
-    ("p99", "p99", "{:.0f} ms", "Latencia p99 en producción (sustained)", NARANJA),
+
+despues = cargar("production", "prod")
+todas = {("prod",) + k: v for k, v in despues.items()}
+G = "production/graficas"
+
+
+def etiqueta(clave, r):
+    """sostenida 75 VUs / spike 503 VUs ..."""
+    _, tipo, _ = clave
+    nombre = {"sustained": "sostenida", "spike": "spike", "breakpoint": "breakpoint"}[tipo]
+    return f"{nombre}\n{r['vus']} VUs"
+
+
+def ordenar(tipo=None):
+    ks = [k for k in todas if tipo is None or k[1] == tipo]
+    return sorted(ks, key=lambda k: (k[1], todas[k]["vus"], True))
+
+
+# --- producción: sostenida (throughput, p95 y p99) ---
+ks = ordenar("sustained")
+for nombre, clave, fmt, titulo in [
+    ("throughput", "rps", "{:.0f} req/s", "Throughput en producción (carga sostenida)"),
+    ("p95", "p95", "{:.0f} ms", "Latencia p95 en producción (carga sostenida)"),
+    ("p99", "p99", "{:.0f} ms", "Latencia p99 en producción (carga sostenida)"),
 ]:
-    fig, ax = plt.subplots(figsize=(7.5, 4))
-    barras(ax, et, [prod[e][clave] for e in escalas], color, fmt, titulo)
-    ax.set_xlabel("LOAD_SCALE")
+    fig, ax = plt.subplots(figsize=(9, 4.2))
+    colores = [AZUL for _ in ks]
+    barras(ax, [etiqueta(k, todas[k]) for k in ks], [todas[k][clave] for k in ks], colores, fmt, titulo)
     if clave != "rps":
-        ax.axhline(500, color="#c62828", ls="--", lw=1)
-        ax.text(len(escalas) - 0.5, 500, "umbral 500 ms", color="#c62828", ha="right", va="bottom", fontsize=8)
-    guardar(fig, "production/graficas", nombre)
+        ax.axhline(500, color=ROJO, ls="--", lw=1)
+        ax.text(len(ks) - 0.5, 500, "umbral 500 ms", color=ROJO, ha="right", va="bottom", fontsize=8)
+    guardar(fig, G, nombre)
 
-# --- producción: spike, breakpoint y tasa de error de todas las corridas ---
-extra = {}
-for tipo in ("spike", "breakpoint"):
-    for f in sorted(glob.glob(f"production/production-{tipo}-*.json")):
-        extra[(tipo, re.search(rf"{tipo}-([\d.]+)-", f).group(1))] = row(f)
-
-corridas = [(f"sustained\n{e}\n({prod[e]['vus']} VUs)", prod[e]) for e in escalas]
-corridas += [(f"{t}\n{e}\n({r['vus']} VUs)", r) for (t, e), r in sorted(extra.items(), key=lambda kv: (kv[0][0], float(kv[0][1])))]
-
-fig, ax = plt.subplots(figsize=(10, 4))
-barras(ax, [c[0] for c in corridas], [c[1]["err"] for c in corridas], "#c62828", "{:.2f} %", "Tasa de error en producción (todas las corridas)")
-ax.axhline(1, color=GRIS, ls="--", lw=1)
-ax.text(len(corridas) - 0.5, 1, "umbral 1 %", color=GRIS, ha="right", va="bottom", fontsize=8)
+# --- producción: tasa de error de todas las corridas ---
+ks = ordenar()
+fig, ax = plt.subplots(figsize=(12, 4.2))
+colores = [AZUL for _ in ks]
+barras(ax, [etiqueta(k, todas[k]) for k in ks], [todas[k]["err"] for k in ks], colores, "{:.2f} %", "Tasa de error en producción (todas las corridas)")
+ax.axhline(1, color=ROJO, ls="--", lw=1)
+ax.text(len(ks) - 0.5, 1, "umbral 1 %", color=ROJO, ha="right", va="bottom", fontsize=8)
 ax.set_ylabel("% de peticiones fallidas")
-guardar(fig, "production/graficas", "error_rate")
+guardar(fig, G, "error_rate")
 
-fig, axs = plt.subplots(1, 3, figsize=(12, 4))
-sp = [(f"{e}\n({r['vus']} VUs)", r) for (t, e), r in sorted(extra.items(), key=lambda kv: float(kv[0][1])) if t == "spike"]
-if sp:
-    for ax, (clave, fmt, titulo) in zip(axs, [("rps", "{:.0f}", "Throughput (req/s)"), ("p95", "{:.0f}", "p95 (ms)"), ("err", "{:.1f} %", "Error")]):
-        barras(ax, [c[0] for c in sp], [c[1][clave] for c in sp], AZUL if clave == "rps" else NARANJA, fmt, titulo)
-    axs[1].axhline(1000, color="#c62828", ls="--", lw=1)
-    fig.suptitle("Spike en producción por LOAD_SCALE (umbral p95: 1000 ms)", fontweight="bold")
-    guardar(fig, "production/graficas", "spike")
-else:
-    plt.close(fig)
+# --- producción: spike (p95, error y throughput del pico) ---
+ks = ordenar("spike")
+if ks:
+    fig, axs = plt.subplots(1, 3, figsize=(13, 4.2))
+    colores = [AZUL for _ in ks]
+    et = [f"{todas[k]['vus']} VUs" for k in ks]
+    pico = lambda r, c: r["m"].get(f"http_req_duration{{phase:peak}}", r["m"]["http_req_duration"])[c]
+    barras(axs[0], et, [todas[k]["rps_pico"] or todas[k]["rps"] for k in ks], colores, "{:.0f}", "Throughput del pico (req/s)")
+    barras(axs[1], et, [pico(todas[k], "p(95)") for k in ks], colores, "{:.0f}", "p95 del pico (ms)")
+    axs[1].axhline(1000, color=ROJO, ls="--", lw=1)
+    barras(axs[2], et, [todas[k]["err"] for k in ks], colores, "{:.2f} %", "Error")
+    axs[2].axhline(1, color=ROJO, ls="--", lw=1)
+    fig.suptitle("Spike en producción (umbral p95: 1000 ms; error: 1 %)", fontweight="bold")
+    guardar(fig, G, "spike")
 
-# --- producción: recuperación tras el spike (spike.js con escenario "recovery") ---
+# --- producción: recuperación tras el spike (escenario recovery) ---
 rec = []
-for f in sorted(glob.glob("production/production-spike-*.json")):
-    m = metrics(f)
-    if "http_req_duration{phase:recovery}" in m:
-        esc = re.search(r"spike-([\d.]+)-", f).group(1)
-        rec.append((esc, m["http_req_duration{phase:peak}"]["p(95)"], m["http_req_duration{phase:recovery}"]["p(95)"],
+for (fuente, tipo, esc), r in sorted(todas.items(), key=lambda kv: kv[1]["vus"]):
+    m = r["m"]
+    if tipo == "spike" and "http_req_duration{phase:recovery}" in m:
+        rec.append((r["vus"], m["http_req_duration{phase:peak}"]["p(95)"], m["http_req_duration{phase:recovery}"]["p(95)"],
                     m["http_req_failed{phase:peak}"]["value"] * 100, m["http_req_failed{phase:recovery}"]["value"] * 100))
 if rec:
     fig, axs = plt.subplots(1, 2, figsize=(10, 4))
     x = range(len(rec))
-    for ax, i, titulo, fmt in [(axs[0], 1, "p95 (ms)", "{:.0f}"), (axs[1], 3, "Error (%)", "{:.1f}")]:
-        for k, (color, etiqueta, off) in enumerate([(NARANJA, "pico", 1), (AZUL, "recuperación", 2)]):
-            vals = [r[i + k] for r in rec]
-            b = ax.bar([j + (k - 0.5) * 0.35 for j in x], vals, width=0.35, color=color, label=etiqueta)
+    for ax, i, titulo, fmt in [(axs[0], 1, "p95 (ms)", "{:.0f}"), (axs[1], 3, "Error (%)", "{:.2f}")]:
+        for k, (color, etiqueta_) in enumerate([(NARANJA, "pico"), (AZUL, "recuperación")]):
+            vals = [r_[i + k] for r_ in rec]
+            b = ax.bar([j + (k - 0.5) * 0.35 for j in x], vals, width=0.35, color=color, label=etiqueta_)
             for r_, v in zip(b, vals):
                 ax.text(r_.get_x() + r_.get_width() / 2, v, fmt.format(v), ha="center", va="bottom", fontsize=8)
         ax.set_xticks(list(x))
-        ax.set_xticklabels([f"LOAD_SCALE {r[0]}" for r in rec])
+        ax.set_xticklabels([f"{r_[0]} VUs" for r_ in rec])
         ax.set_title(titulo, fontweight="bold")
         ax.legend()
         ax.grid(axis="y", alpha=0.3)
-    fig.suptitle("Spike en producción: pico vs. fase de recuperación", fontweight="bold")
-    guardar(fig, "production/graficas", "recuperacion")
+    fig.suptitle("Spike en producción: pico vs. fase de recuperación (5 VUs, 2 min)", fontweight="bold")
+    guardar(fig, G, "recuperacion")
+
+# --- producción: breakpoint por escalón (throughput efectivo y p95) ---
+for f in sorted(glob.glob("production/production-breakpoint-*.json")):
+    m = metrics(f)
+    escala = float(re.search(r"breakpoint-([\d.]+)-", f).group(1))
+    objetivo = [500, 1500, 3000, 5000, 8000, 10000]
+    esc = lambda n: max(1, int(n * escala + 0.5))
+    stages = [i for i in range(1, 7) if m.get(f"http_reqs{{stage:s{i}}}", {}).get("count", 0)]
+    if not stages:
+        continue
+    fig, axs = plt.subplots(1, 2, figsize=(12, 4.2))
+    et = [f"s{i}\n(→{esc(objetivo[i - 1]) * 6} req/s)" for i in stages]
+    efectivos = [m[f"http_reqs{{stage:s{i}}}"]["count"] / 60 for i in stages]
+    barras(axs[0], et, efectivos, AZUL, "{:.0f}", "Throughput efectivo por escalón (req/s)")
+    p95s = [m[f"http_req_duration{{stage:s{i}}}"]["p(95)"] for i in stages]
+    barras(axs[1], et, p95s, [ROJO if v > 500 else AZUL for v in p95s], "{:.0f} ms", "p95 por escalón")
+    axs[1].axhline(500, color=ROJO, ls="--", lw=1)
+    fig.suptitle("Breakpoint en producción: el p95 se dispara cuando el throughput deja de crecer", fontweight="bold")
+    guardar(fig, G, "breakpoint_escalones")
 
 # --- CPU, memoria y TIME_WAIT durante cada corrida (monitor.sh), local y producción ---
 for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recursos-*.csv")):
@@ -130,7 +177,7 @@ for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recurs
     filas = list(csv.DictReader(open(f)))
     if len(filas) < 2:
         continue
-    t = [(i * 1.0) for i in range(len(filas))]
+    t = [datetime.strptime(r["ts_utc"], "%Y-%m-%dT%H:%M:%SZ") for r in filas]
     t0 = filas[0]["ts_utc"]
     num = lambda c: [float(r[c]) if r.get(c) not in (None, "") else float("nan") for r in filas]
     con_bd = any(r.get("db_connections") not in (None, "") for r in filas)
@@ -141,7 +188,7 @@ for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recurs
     axs[1].plot(t, num("backend_mem_mb"), color=AZUL, label="backend")
     axs[1].plot(t, num("nginx_mem_mb"), color=NARANJA, label="nginx")
     axs[1].axhline(1024, color="#c62828", ls="--", lw=1)
-    axs[1].text(0, 1024, "límite del backend (1 GB)", color="#c62828", fontsize=8, va="bottom")
+    axs[1].text(0.01, 1024, "límite del backend (1 GB)", transform=axs[1].get_yaxis_transform(), color="#c62828", fontsize=8, va="bottom")
     axs[1].set_ylabel("Memoria (MB)"); axs[1].legend(loc="center left")
     axs[2].plot(t, num("nginx_timewait"), color="#6a1b9a")
     axs[2].set_ylabel("TIME_WAIT (nginx)")
@@ -152,7 +199,20 @@ for f in sorted(glob.glob("production/recursos-*.csv") + glob.glob("local/recurs
         ax2.plot(t, num("db_connections"), color="#c62828", label="conexiones abiertas")
         ax2.set_ylabel("conexiones abiertas")
         axs[3].legend(loc="upper left"); ax2.legend(loc="upper right")
-    axs[-1].set_xlabel(f"muestras (desde {t0})")
+    axs[-1].set_xlabel("hora (UTC)")
+    axs[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    if carpeta_salida.startswith("production"):
+        # sombrea cada corrida (inicio = marca de tiempo del JSON; duración = peticiones / req/s)
+        for jf in sorted(glob.glob("production/production-*.json")):
+            mt = re.search(r"production-(\w+?)-([\d.]+)-(\d{8}T\d{6}Z)", jf)
+            if not mt or mt.group(1) == "smoke":
+                continue
+            ini = datetime.strptime(mt.group(3), "%Y%m%dT%H%M%SZ")
+            rq = metrics(jf)["http_reqs"]
+            fin = ini + timedelta(seconds=rq["count"] / rq["rate"])
+            for ax in axs:
+                ax.axvspan(ini, fin, color=GRIS, alpha=0.12)
+            axs[0].text(ini, 0.97, f" {mt.group(1)} {mt.group(2)}", transform=axs[0].get_xaxis_transform(), fontsize=7, va="top", ha="left")
     for ax in axs:
         ax.grid(alpha=0.3)
     nombre = os.path.basename(f)[:-4]
@@ -195,19 +255,23 @@ ax.axhline(1, color=GRIS, ls="--", lw=1)
 ax.text(len(loc_esc) - 0.5, 1, "umbral 1 %", color=GRIS, ha="right", va="bottom", fontsize=8)
 guardar(fig, "local/graficas", "error_rate")
 
-# --- comparativa local vs producción (sustained) ---
+
+# --- comparativa local vs producción (sostenida, mismos 150 VUs) ---
 loc = row("local/results-sustained.json")
-ref = prod[escalas[-1]]
-fig, axs = plt.subplots(1, 3, figsize=(12, 4))
-for ax, (clave, fmt, titulo) in zip(axs, [
-    ("rps", "{:.0f}", "Throughput (req/s)"),
-    ("p95", "{:.1f}", "p95 (ms)"),
-    ("p99", "{:.1f}", "p99 (ms)"),
-]):
-    barras(ax, [f"Local\n{loc['vus']} VUs", f"Producción\n{ref['vus']} VUs"], [loc[clave], ref[clave]], AZUL, fmt, titulo)
-    ax.bar_label  # noqa: B018
-    bs = ax.patches
-    bs[1].set_color(NARANJA)
-fig.suptitle(f"Sustained: local (150 VUs) vs producción (LOAD_SCALE {escalas[-1]})", fontweight="bold")
-guardar(fig, "comparativa", "sustained_local_vs_produccion")
-print("OK", escalas, sorted(extra))
+ref = despues.get(("sustained", "1"))
+if ref:
+    fig, axs = plt.subplots(1, 4, figsize=(14, 4))
+    for ax, (clave, fmt, titulo) in zip(axs, [
+        ("rps", "{:.0f}", "Throughput (req/s)"),
+        ("p95", "{:.1f}", "p95 (ms)"),
+        ("p99", "{:.1f}", "p99 (ms)"),
+        ("err", "{:.2f} %", "Error"),
+    ]):
+        barras(ax, [f"Local\n{loc['vus']} VUs", f"Producción\n{ref['vus']} VUs"], [loc[clave], ref[clave]], [AZUL, NARANJA], fmt, titulo)
+        if clave == "err":
+            ax.set_ylim(0, 1.2)
+            ax.axhline(1, color=ROJO, ls="--", lw=1)
+            ax.text(1.4, 1, "umbral 1 %", color=ROJO, ha="right", va="bottom", fontsize=8)
+    fig.suptitle("Carga sostenida: local vs producción (150 VUs)", fontweight="bold")
+    guardar(fig, "comparativa", "sustained_local_vs_produccion")
+print("OK", sorted(despues))

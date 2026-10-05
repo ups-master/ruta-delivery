@@ -114,10 +114,15 @@ que pide el enunciado (100-200 VUs, ramp-up 2-3 min, meseta 5-10 min, ramp-down 
 
 ### 3.2 Pico extremo (Spike Testing)
 
-0→750 VUs (5x la meseta sostenida de 150 VUs) en 30s, meseta de 1 min, bajada a 0 en 30s — dentro
-del rango que pide el enunciado (5-10x la carga normal, pico de 1-2 min).
-**3 075,4 req/s, p95 = 5,54 ms, p99 = 12,19 ms, 0,00 % de error** (403 397 peticiones); el
-Circuit Breaker queda `CLOSED` sin ninguna llamada rechazada, sin señal de saturación.
+0→750 VUs (5x la meseta sostenida de 150 VUs) en 10 s, pico de 1 min 30 s y bajada inmediata
+a 0 en 5 s, dentro del rango que pide el enunciado (5-10x la carga normal, pico de 1-2 min).
+**Pico: ~4 140 req/s, p95 = 9,53 ms, p99 = 30,17 ms, 0,00 % de error** (434 862 peticiones).
+Tras el pico corre una **fase de recuperación** de 2 min con 5 VUs: p95 = 6,65 ms y 0,00 % de
+error, es decir, el sistema vuelve solo a su latencia normal sin caídas en cascada. El Circuit
+Breaker queda `CLOSED`, sin ninguna llamada rechazada ni reintento, sin señal de saturación.
+Los códigos de respuesta fueron todos 200. La caché de lecturas y el rate limiting de la
+aplicación no se aíslan en esta prueba (solo hay lecturas del admin) y no hay autoescalado:
+es una sola instancia.
 
 ### 3.3 Punto de ruptura (Breakpoint)
 
@@ -133,7 +138,7 @@ degradación progresiva.
 | Escenario | VUs / patrón | Throughput | Promedio | p90 | p95 | p99 | Error |
 |---|---|---:|---:|---:|---:|---:|---:|
 | Sostenida | 0→150→0 (12 min) | 639,5 req/s | 2,36 ms | 4,33 ms | 5,32 ms | 7,05 ms | 0,00 % |
-| Spike | 0→750→0 (2 min) | 3 075,4 req/s | 2,42 ms | 4,39 ms | 5,54 ms | 12,19 ms | 0,00 % |
+| Spike (pico) | 0→750→0 (1 min 45 s + 2 min de recuperación) | ~4 140 req/s | 4,04 ms | 6,49 ms | 9,53 ms | 30,17 ms | 0,00 % |
 | Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | 88,0 ms | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
 
 **Códigos HTTP de error.** En los tres escenarios locales `http_req_failed` fue 0 %: no hubo
@@ -144,10 +149,11 @@ producción (§3.5) la tasa de error también fue 0,00 %. Los JSON de k6 no desg
 respuestas por código, por lo que no hay tabla por código; con 0 % de fallos, todas las
 respuestas fueron 2xx.
 
-**Sobre la rampa del spike.** El enunciado pide subir "de inmediato"; la prueba sube a 750
-VUs en 30 s (25 VUs nuevos por segundo), una subida abrupta frente a la rampa de 3 min de
-la carga sostenida. No es un salto instantáneo: es una desviación menor que conviene
-declarar en la defensa.
+**Sobre la rampa del spike.** El enunciado pide subir "de inmediato" y bajar a 0 de inmediato. La
+prueba sube a 750 VUs en 10 s (75 VUs nuevos por segundo, frente a la rampa de 3 min de la carga
+sostenida) y baja en 5 s. No es un salto instantáneo, pero es una subida abrupta; el pico de
+1 min 30 s está dentro del rango pedido (1-2 min). La fase de recuperación, con 5 VUs, mide si
+el sistema vuelve a su estado normal (p95 y error por fase en el resumen de k6).
 
 ### 3.5 Producción (EC2) y comparativa con local
 

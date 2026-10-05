@@ -3,7 +3,7 @@
 Uso (desde load-tests/):  python3 generar_graficas.py   (requiere matplotlib)
 Lee local/results-*.json y production/production-*.json (sustained, spike y
 breakpoint) y production/recursos-*.csv (salida de monitor.sh); escribe en
-production/graficas/ y comparativa/.
+production/graficas/, local/graficas/ (sostenida y spike) y comparativa/.
 """
 import csv
 import glob
@@ -149,6 +149,42 @@ for f in sorted(glob.glob("production/recursos-*.csv")):
     nombre = os.path.basename(f)[:-4]
     fig.suptitle(f"Recursos durante la prueba: {nombre}", fontweight="bold")
     guardar(fig, "production/graficas", nombre)
+
+# --- local: sostenida y spike (throughput, latencia y error) ---
+# En el spike se usa solo la fase de pico (phase:peak, 105 s) para que la recuperación no
+# diluya el throughput; si el JSON es de la versión anterior del script, se usa el total.
+PICO_S = 105
+ls_m, lp_m = metrics("local/results-sustained.json"), metrics("local/results-spike.json")
+if "http_req_duration{phase:peak}" in lp_m:
+    lp_dur, lp_fail = lp_m["http_req_duration{phase:peak}"], lp_m["http_req_failed{phase:peak}"]
+    lp_rps = (lp_fail["passes"] + lp_fail["fails"]) / PICO_S
+else:
+    lp_dur, lp_fail, lp_rps = lp_m["http_req_duration"], lp_m["http_req_failed"], lp_m["http_reqs"]["rate"]
+loc_esc = [
+    ("Sostenida", ls_m["http_reqs"]["rate"], ls_m["http_req_duration"], ls_m["http_req_failed"]["value"] * 100),
+    ("Spike (pico)", lp_rps, lp_dur, lp_fail["value"] * 100),
+]
+fig, ax = plt.subplots(figsize=(7.5, 4))
+barras(ax, [e[0] for e in loc_esc], [e[1] for e in loc_esc], AZUL, "{:.0f} req/s", "Throughput por escenario (local)")
+guardar(fig, "local/graficas", "throughput")
+fig, ax = plt.subplots(figsize=(8.5, 4))
+for k, (clave, color) in enumerate([("avg", AZUL), ("p(90)", "#f4b183"), ("p(95)", "#a9d18e"), ("p(99)", "#f0d9a5")]):
+    vals = [e[2][clave] for e in loc_esc]
+    b = ax.bar([j + (k - 1.5) * 0.2 for j in range(len(loc_esc))], vals, width=0.2, color=color, label=clave.replace("avg", "promedio"))
+    for r_, v in zip(b, vals):
+        ax.text(r_.get_x() + r_.get_width() / 2, v, f"{v:.1f}", ha="center", va="bottom", fontsize=8)
+ax.set_xticks(range(len(loc_esc)))
+ax.set_xticklabels([e[0] for e in loc_esc])
+ax.set_title("Latencia (ms) por escenario (local)", fontweight="bold")
+ax.legend()
+ax.grid(axis="y", alpha=0.3)
+guardar(fig, "local/graficas", "latencia")
+fig, ax = plt.subplots(figsize=(7.5, 4))
+barras(ax, [e[0] for e in loc_esc], [e[3] for e in loc_esc], "#c62828", "{:.2f} %", "Tasa de error por escenario (local)")
+ax.set_ylim(0, 1)
+ax.axhline(1, color=GRIS, ls="--", lw=1)
+ax.text(len(loc_esc) - 0.5, 1, "umbral 1 %", color=GRIS, ha="right", va="bottom", fontsize=8)
+guardar(fig, "local/graficas", "error_rate")
 
 # --- comparativa local vs producción (sustained) ---
 loc = row("local/results-sustained.json")

@@ -95,8 +95,9 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 
 ### Pico extremo (Spike Testing)
 
-0→750 VUs (5x la meseta sostenida de 150 VUs) en 30s, meseta de 1 min, bajada a 0 en 30s (dentro del
-rango mínimo exigido: 5-10x la carga normal, pico de 1-2 min).
+0→750 VUs (5x la meseta sostenida de 150 VUs) en 10 s, pico de 1 min 30 s y bajada a 0 en 5 s
+(dentro del rango mínimo exigido: 5-10x la carga normal, pico de 1-2 min), seguido de una fase de
+recuperación de 2 min con 5 VUs.
 
 ```bash
 docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
@@ -106,13 +107,14 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 
 | Indicador | Resultado | Umbral | Cumple |
 |---|---:|---:|---|
-| Throughput | 3 075,4 req/s (403 397 peticiones) | — | — |
-| Latencia promedio | 2,42 ms | — | — |
-| p90 | 4,39 ms | — | — |
-| p95 | 5,54 ms | < 1000 ms | ✅ |
-| **p99** | **12,19 ms** | — | — |
-| Tasa de error | 0,00 % | — | ✅ |
-| Estado del Circuit Breaker tras el spike | `CLOSED`, 0 llamadas rechazadas | — | Sin señal de saturación |
+| Throughput (pico) | ~4 140 req/s (434 862 peticiones en 105 s) | — | — |
+| Latencia promedio | 4,04 ms | — | — |
+| p90 | 6,49 ms | — | — |
+| p95 | 9,53 ms | < 1000 ms | ✅ |
+| **p99** | **30,17 ms** | — | — |
+| Tasa de error | 0,00 % (todas las respuestas 200) | — | ✅ |
+| **Recuperación** (5 VUs, 2 min) | p95 6,65 ms, error 0,00 % | < 500 ms, < 1 % | ✅ |
+| Estado del Circuit Breaker tras el spike | `CLOSED`, 0 llamadas rechazadas, 0 reintentos | — | Sin señal de saturación |
 
 ![Tasa de error por escenario](local/graficas/error_rate.png)
 
@@ -352,8 +354,7 @@ docker logs --since <inicio-UTC> --until <fin-UTC> <nginx> 2>&1 \
 **Spike.** Sube a su pico en 10 s, lo mantiene 1 min 30 s y baja en 5 s; después corre el escenario
 `recovery` (5 VUs fijos, 2 min). Los umbrales `http_req_*{phase:peak}` y `{phase:recovery}` dejan
 en el resumen el p95 y el error de cada fase: si la recuperación vuelve a ~0 % de error y a la
-latencia base, el sistema se recupera solo; si no, queda degradado. (Los resultados locales de
-arriba son de la versión anterior del script, con 30 s de subida y de bajada.)
+latencia base, el sistema se recupera solo; si no, queda degradado. (El spike local de arriba se corrió con esta versión.)
 
 **Breakpoint.** `breakpoint.js` etiqueta cada petición con su escalón (`s1`…`s6`, 1 min cada uno)
 y `breakpoint_cut.py` imprime tasa objetivo, peticiones, error y p95 por escalón y señala el

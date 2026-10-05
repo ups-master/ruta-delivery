@@ -390,6 +390,39 @@ python3 load-tests/redact_results.py load-tests/production load-tests/results/pr
 `redact_results.py` copia los resúmenes a la carpeta versionada reemplazando el JWT de `setup_data`;
 no subas a git los de `results/` tal cual.
 
+## Procedimiento de corridas en producción (EC2)
+
+Orden recomendado tras desplegar el `upstream` con `keepalive` del nginx (la plantilla se monta desde el
+checkout del repo en la VM, no va en la imagen):
+
+```bash
+# En la EC2: traer la rama y recrear SOLO el nginx
+git fetch && git checkout <rama>
+docker compose -f deploy/docker-compose.yml --env-file deploy/env/production.env up -d nginx
+docker exec <nginx> nginx -t && curl -k https://<ip>/healthz
+```
+
+Cambia `LOAD_SCALE` en `load-tests/env/production.env` entre corridas (usa `ASSUME_YES=1`), deja 4-5 min
+entre una y otra y confirma antes de cada una que el backend no se reinició
+(`docker inspect -f '{{.RestartCount}} {{.State.OOMKilled}}' <backend>`). En la EC2 corre `monitor.sh`
+durante cada corrida (ver arriba); la base de datos y los créditos de CPU, en CloudWatch.
+
+| # | Escenario | `LOAD_SCALE` | Qué demuestra | Criterio |
+|---|---|---|---|---|
+| 0 | smoke | 0.1 | El nginx nuevo responde bien | 0 % de error |
+| 1 | sustained | 0.5 (75 VUs) | Línea base y recursos en carga normal | 0 % de error, p95 ≈ 210 ms o mejor |
+| 2 | sustained | 1 (150 VUs) | Rango de 100-200 VUs con error < 1 % | error < 1 %, p95 < 500 ms |
+| 3 | spike | 0.67 (500 VUs, ~6,7× la carga normal de 75 VUs) | Pico abrupto y **fase de recuperación** | recovery: error ~0 % y p95 de vuelta a la línea base |
+| 4 | spike | 1 (750 VUs) — solo si el 3 fue estable | Extremo del rango 5-10× | se reporta lo que ocurra |
+| 5 | breakpoint | 0.05 (25→500 iteraciones/s ≈ 150→3 000 req/s) | Punto de ruptura por escalón | `breakpoint_cut.py` |
+
+Si la corrida 2 no baja del 1 % de error, reporta la de 0.7 (105 VUs, dentro del rango) y usa
+`monitor.sh` para ver qué recurso limita: CPU del backend o de la VM pegada al tope → cómputo;
+`TIME_WAIT` del nginx alto y 502 `Address not available` → el `keepalive` no aplicó; memoria del backend
+cerca de 1 GB u `OOMKilled` → subir `BACKEND_MEM_LIMIT`; créditos de CPU en 0 → límite de AWS.
+Después de cada corrida: `redact_results.py` → `production/`, `resumen_corrida.py` para las tablas y
+`generar_graficas.py` (requiere matplotlib) para las gráficas.
+
 ## Gráficas y carpetas
 
 - `local/` — resultados y gráficas del stack local (`local/graficas/`, `local/results-*.json`).

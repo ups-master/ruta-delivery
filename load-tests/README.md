@@ -305,8 +305,10 @@ calculan con la hora de inicio de cada corrida de k6.
 
 Con la misma carga y el mismo perfil de prueba, ambos cumplen los umbrales (error < 1 %, p95 < 500 ms).
 La diferencia de latencia no está desglosada entre red y servidor: local corre en la red de Docker, sin red de
-por medio, y el mínimo de las corridas en producción es de ~86 ms. Una medición puntual desde otra máquina dio ~5 ms
-de tiempo hasta el primer byte para `/healthz`, así que no se atribuye solo a la distancia.
+por medio, y el mínimo de las corridas en producción es de ~86 ms. k6 corrió como contenedor Docker sobre WSL2 en
+Windows, así que sus latencias incluyen ese entorno (red virtual y CPU de la máquina); una lectura puntual con `curl`
+desde la shell de la misma máquina dio ~5 ms hasta el primer byte para `/healthz`. El overhead del generador solo
+puede inflar las latencias medidas, por lo que los umbrales cumplidos se cumplen igual en el servidor.
 
 **Lectura:**
 
@@ -345,9 +347,10 @@ el código de negocio corre en un único proceso. No hay balanceador ni réplica
   local es una máquina de desarrollo con CPU holgada y sin red de por medio; la EC2 es una
   instancia mucho más pequeña, accedida por red. La comparación mide *tamaño de nodo*, no
   un cambio de arquitectura.
-- **El generador también es un solo punto.** k6 corre desde una única máquina y una única
-  ruta de red, así que parte de la cola y de los outliers de conexión puede venir del lado
-  del cliente y no del servidor.
+- **El generador también es un solo punto.** k6 corre como contenedor Docker sobre WSL2 en Windows,
+  desde una única máquina y una única ruta de red, así que parte de la latencia base, de la cola y de los
+  outliers de conexión puede venir del lado del cliente y no del servidor. No se midió ese overhead; es un sesgo
+  conservador (solo puede aumentar las latencias medidas).
 
 **Qué implica para escalar.** Con un monolito de una instancia, la salida inmediata es
 **vertical** (más vCPU/RAM, subir `DB_POOL_MAX_SIZE`; en la ronda local pasar el pool de 10

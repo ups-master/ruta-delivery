@@ -280,11 +280,15 @@ calculan con la hora de inicio de cada corrida de k6.
 
 ![Sostenida: local vs producción](../load-tests/comparativa/sustained_local_vs_produccion.png)
 
-- **Latencia base:** el mínimo por petición ronda 86–90 ms en producción, frente a 7,0 ms de p95 en local; no son
-  comparables 1 a 1 (en local no hay red de por medio). No se ha separado cuánto de esa base es red y cuánto
-  servidor: una medición puntual desde otra máquina dio ~5 ms de tiempo hasta el primer byte para `/healthz` y
-  ~8 ms para la lectura de líneas de factura (§3.7), así que la latencia de las corridas de carga no se explica
-  solo por la distancia. La forma sí es comparable: ambos cumplen los umbrales con la misma carga.
+- **Latencia base y generador de carga:** el mínimo por petición ronda 86–90 ms en producción, frente a 7,0 ms de
+  p95 en local (donde no hay red de por medio), por lo que no son comparables 1 a 1. k6 se ejecutó como un
+  contenedor Docker sobre WSL2 en Windows: las latencias medidas incluyen la red virtual de ese entorno y la CPU de
+  la máquina que genera la carga, y no se midió cuánto aporta cada parte. Una lectura puntual con `curl` desde la
+  shell de esa misma máquina (sin contenedor) dio ~5 ms hasta el primer byte para `/healthz` y ~8 ms para las
+  líneas de factura (§3.7), así que parte de la base puede no ser del servidor. El efecto es conservador: el
+  overhead del generador solo puede aumentar las latencias medidas, no reducirlas, de modo que los umbrales que
+  se cumplen (p95 de 122 ms frente a 500 ms con 150 VUs) se cumplen igual, o con más margen, en el servidor. La
+  forma sí es comparable: local y producción cumplen los umbrales con la misma carga.
 - **Es un monolito en una sola instancia, la carga no se distribuye.** Todo el tráfico entra a un único nodo
   (un contenedor backend con 1 GB de memoria, una JVM, un pool de 10 conexiones y una EC2; la BD es RDS,
   aparte), así que estas pruebas miden la capacidad *de una instancia*: ~590 req/s sostenidos con error 0 % y
@@ -348,7 +352,7 @@ efecto real es que las lecturas repetidas dejan de cargar la base de datos. Esta
 siguiente es la misma comprobación contra la EC2.
 
 **Comprobación contra producción (EC2, desde fuera, por la IP pública).** Se ejecutaron los mismos pasos con
-`curl` desde otra máquina (un solo cliente, `INSECURE_TLS`):
+`curl` desde la shell de WSL de la máquina que lanza k6, sin contenedor (un solo cliente, `INSECURE_TLS`):
 
 | Intento (rate limiting) | Respuesta |
 |---|---|

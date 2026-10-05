@@ -1,194 +1,145 @@
 {
-  "openapi": "3.0.1",
-  "info": {
-    "title": "Ruta - API de verificacion de entregas",
-    "description": "Verificacion de entregas con PIN, foto y ubicacion (Fase1_Vision_Producto_Modelo_Negocio_API_Final.md). Todas las rutas /api/v1/admin/** y /api/v1/driver/** exigen la cookie HttpOnly de sesion (\"access_token\") que POST /api/v1/auth/login establece via Set-Cookie -- Swagger UI la envia solo si se probo el login desde el propio navegador con \"Try it out\" (comparte cookies con la pestana); un token pegado a mano no aplica aqui, a diferencia del antiguo esquema Bearer.",
-    "version": "1.0.0"
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "Ruta - API de verificacion de entregas",
+    "description" : "Verificacion de entregas con PIN, foto y ubicacion. Todas las rutas /api/v1/admin/** y /api/v1/driver/** exigen la cookie HttpOnly de sesion (\"access_token\") que POST /api/v1/auth/login establece via Set-Cookie. Las peticiones que modifican datos requieren ademas el header X-XSRF-TOKEN (proteccion CSRF con doble cookie). Swagger UI envia la cookie solo si el login se hizo desde el propio navegador con \"Try it out\".",
+    "version" : "1.0.0"
   },
-  "servers": [
-    {
-      "url": "http://localhost:8080",
-      "description": "Generated server url"
-    }
-  ],
-  "security": [
-    {
-      "sessionCookie": []
-    }
-  ],
-  "tags": [
-    {
-      "name": "Costo por entrega (showback)",
-      "description": "Fase1 §4.5: costo por entrega verificada, calculado con datos reales y tarifas configurables."
-    },
-    {
-      "name": "Entregas del conductor",
-      "description": "Busqueda de facturas pendientes, confirmacion de entrega con PIN/GPS, incidencias e historial propio."
-    },
-    {
-      "name": "Autenticación",
-      "description": "Login por usuario y contraseña, con rate limiting. El JWT viaja en cookie HttpOnly."
-    },
-    {
-      "name": "Tablero administrativo",
-      "description": "Mapa de entregas/incidencias y métricas por conductor, ambos acotados a un rango de fechas."
-    },
-    {
-      "name": "Resiliencia",
-      "description": "Circuit Breaker y Retry que protegen la simulacion del ERP; permite simular fallos para probarlos en vivo."
-    },
-    {
-      "name": "Administración de usuarios",
-      "description": "Alta, baja y edición de administradores y conductores (app_user)."
-    },
-    {
-      "name": "Historial de entregas (admin)",
-      "description": "Historial paginado de entregas/incidencias de todos los conductores, y su foto de evidencia."
-    },
-    {
-      "name": "Facturas (admin)",
-      "description": "Alta, publicacion y consulta de facturas desde el panel administrativo (incluye el PIN vigente)."
-    }
-  ],
-  "paths": {
-    "/api/v1/admin/users/{id}": {
-      "put": {
-        "tags": [
-          "Administración de usuarios"
-        ],
-        "summary": "Actualizar un usuario",
-        "description": "Reemplaza nombre, estado activo y opcionalmente la contraseña. Un administrador no puede desactivarse a sí mismo.",
-        "operationId": "update",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
+  "servers" : [ {
+    "url" : "/",
+    "description" : "Mismo origen que la aplicacion"
+  } ],
+  "security" : [ {
+    "sessionCookie" : [ ]
+  } ],
+  "tags" : [ {
+    "name" : "Costo por entrega (showback)",
+    "description" : "Fase1 §4.5: costo por entrega verificada, calculado con datos reales y tarifas configurables."
+  }, {
+    "name" : "Entregas del conductor",
+    "description" : "Busqueda de facturas pendientes, confirmacion de entrega con PIN/GPS, incidencias e historial propio."
+  }, {
+    "name" : "Autenticación",
+    "description" : "Login por usuario y contraseña, con rate limiting. El JWT viaja en cookie HttpOnly."
+  }, {
+    "name" : "Tablero administrativo",
+    "description" : "Mapa de entregas/incidencias y métricas por conductor, ambos acotados a un rango de fechas."
+  }, {
+    "name" : "Resiliencia",
+    "description" : "Circuit Breaker y Retry que protegen la simulacion del ERP; permite simular fallos para probarlos en vivo."
+  }, {
+    "name" : "Administración de usuarios",
+    "description" : "Alta, baja y edición de administradores y conductores (app_user)."
+  }, {
+    "name" : "Historial de entregas (admin)",
+    "description" : "Historial paginado de entregas/incidencias de todos los conductores, y su foto de evidencia."
+  }, {
+    "name" : "Facturas (admin)",
+    "description" : "Alta, publicacion y consulta de facturas desde el panel administrativo (incluye el PIN vigente)."
+  } ],
+  "paths" : {
+    "/api/v1/admin/users/{id}" : {
+      "put" : {
+        "tags" : [ "Administración de usuarios" ],
+        "summary" : "Actualizar un usuario",
+        "description" : "Reemplaza nombre, estado activo y opcionalmente la contraseña. Un administrador no puede desactivarse a sí mismo.",
+        "operationId" : "update",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
           }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateDriverRequest"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateDriverRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "409": {
-            "description": "Un administrador intentó desactivarse a sí mismo",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+        "responses" : {
+          "409" : {
+            "description" : "Un administrador intentó desactivarse a sí mismo",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "Datos inválidos",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+          "400" : {
+            "description" : "Datos inválidos",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "404": {
-            "description": "El usuario no existe",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+          "404" : {
+            "description" : "El usuario no existe",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Usuario actualizado",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+          "200" : {
+            "description" : "Usuario actualizado",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DriverResponse"
                 }
               }
             }
           }
         }
       },
-      "delete": {
-        "tags": [
-          "Administración de usuarios"
-        ],
-        "summary": "Eliminar un usuario",
-        "description": "Un administrador no puede eliminarse a sí mismo. Falla con 409 si el usuario tiene historial de entregas asociado (viola la FK de delivery_log.driver_id).",
-        "operationId": "delete",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
+      "delete" : {
+        "tags" : [ "Administración de usuarios" ],
+        "summary" : "Eliminar un usuario",
+        "description" : "Un administrador no puede eliminarse a sí mismo. Falla con 409 si el usuario tiene historial de entregas asociado (viola la FK de delivery_log.driver_id).",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
           }
-        ],
-        "responses": {
-          "409": {
-            "description": "Autoeliminación, o el usuario tiene historial de entregas"
-          },
-          "204": {
-            "description": "Usuario eliminado"
-          },
-          "404": {
-            "description": "El usuario no existe"
-          }
-        }
-      }
-    },
-    "/api/v1/admin/cost/support-hours": {
-      "put": {
-        "tags": [
-          "Costo por entrega (showback)"
-        ],
-        "summary": "Registrar horas de soporte del mes",
-        "description": "Las horas de soporte varian cada mes y se cargan manualmente; el resto del costo se calcula solo.",
-        "operationId": "setSupportHours",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetSupportHoursRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "400": {
-            "description": "El mes no tiene el formato yyyy-MM o las horas son invalidas",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationalCostResponse"
+        } ],
+        "responses" : {
+          "409" : {
+            "description" : "Autoeliminación, o el usuario tiene historial de entregas",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Horas guardadas; se devuelve el costo recalculado",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationalCostResponse"
+          "204" : {
+            "description" : "Usuario eliminado"
+          },
+          "404" : {
+            "description" : "El usuario no existe",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -196,52 +147,39 @@
         }
       }
     },
-    "/api/v1/driver/deliveries/incident": {
-      "post": {
-        "tags": [
-          "Entregas del conductor"
-        ],
-        "summary": "Reportar una incidencia",
-        "description": "Registra que la entrega no se pudo completar (motivo y ubicacion), sin bloquear ni cancelar la factura. Acepta un header opcional \"Idempotency-Key\": a diferencia de /confirm, aqui NO hay ninguna regla de negocio que impida crear dos incidencias iguales ante un reintento de red, asi que esta clave es la unica proteccion real contra ese duplicado.",
-        "operationId": "reportIncident",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Clave de idempotencia generada por el cliente (p. ej. un UUID por intento de reporte).",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReportIncidentRequest"
+    "/api/v1/admin/cost/support-hours" : {
+      "put" : {
+        "tags" : [ "Costo por entrega (showback)" ],
+        "summary" : "Registrar horas de soporte del mes",
+        "description" : "Las horas de soporte varian cada mes y se cargan manualmente; el resto del costo se calcula solo.",
+        "operationId" : "setSupportHours",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SetSupportHoursRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "Incidencia registrada",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReportIncidentResponse"
+        "responses" : {
+          "400" : {
+            "description" : "El mes no tiene el formato yyyy-MM o las horas son invalidas",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "La factura indicada no existe",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReportIncidentResponse"
+          "200" : {
+            "description" : "Horas guardadas; se devuelve el costo recalculado",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OperationalCostResponse"
                 }
               }
             }
@@ -249,92 +187,48 @@
         }
       }
     },
-    "/api/v1/driver/deliveries/confirm": {
-      "post": {
-        "tags": [
-          "Entregas del conductor"
-        ],
-        "summary": "Confirmar una entrega",
-        "description": "Bloquea la factura, valida el PIN y guarda la evidencia (foto, GPS) en una sola transaccion. Los datos de la factura (numero, cliente, direccion) se resuelven desde la base por invoiceId, no desde este cuerpo. Acepta un header opcional \"Idempotency-Key\": un reintento con la misma clave devuelve la respuesta ya dada, sin volver a validar el PIN ni tocar la base (util ante mala conectividad, cuando el cliente no supo si la primera peticion llego).",
-        "operationId": "confirmDelivery",
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Clave de idempotencia generada por el cliente (p. ej. un UUID por intento de confirmacion).",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
+    "/api/v1/driver/deliveries/incident" : {
+      "post" : {
+        "tags" : [ "Entregas del conductor" ],
+        "summary" : "Reportar una incidencia",
+        "description" : "Registra que la entrega no se pudo completar (motivo y ubicacion), sin bloquear ni cancelar la factura. Acepta un header opcional \"Idempotency-Key\": a diferencia de /confirm, aqui NO hay ninguna regla de negocio que impida crear dos incidencias iguales ante un reintento de red, asi que esta clave es la unica proteccion real contra ese duplicado.",
+        "operationId" : "reportIncident",
+        "parameters" : [ {
+          "name" : "Idempotency-Key",
+          "in" : "header",
+          "description" : "Clave de idempotencia generada por el cliente (p. ej. un UUID por intento de reporte).",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
           }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfirmDeliveryRequest"
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ReportIncidentRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "200": {
-            "description": "Entrega confirmada; se guarda la evidencia",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfirmDeliveryResponse"
+        "responses" : {
+          "200" : {
+            "description" : "Incidencia registrada",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportIncidentResponse"
                 }
               }
             }
           },
-          "422": {
-            "description": "PIN incorrecto",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfirmDeliveryResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Foto invalida (tamano, formato) o factura no encontrada/no publicada",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfirmDeliveryResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Demasiados intentos de confirmacion en poco tiempo para este conductor",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfirmDeliveryResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "La entrega ya habia sido confirmada",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfirmDeliveryResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Circuito abierto: el ERP simulado no esta disponible",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConfirmDeliveryResponse"
+          "400" : {
+            "description" : "La factura indicada no existe",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -342,172 +236,253 @@
         }
       }
     },
-    "/api/v1/auth/logout": {
-      "post": {
-        "tags": [
-          "Autenticación"
-        ],
-        "summary": "Cerrar sesion",
-        "description": "Invalida la cookie de sesion (JWT) del lado del navegador. El backend no mantiene estado de sesion: esto solo borra la cookie, no revoca el token en el servidor.",
-        "operationId": "logout",
-        "responses": {
-          "204": {
-            "description": "Cookie de sesion eliminada"
+    "/api/v1/driver/deliveries/confirm" : {
+      "post" : {
+        "tags" : [ "Entregas del conductor" ],
+        "summary" : "Confirmar una entrega",
+        "description" : "Bloquea la factura, valida el PIN y guarda la evidencia (foto, GPS) en una sola transaccion. Los datos de la factura (numero, cliente, direccion) se resuelven desde la base por invoiceId, no desde este cuerpo. Acepta un header opcional \"Idempotency-Key\": un reintento con la misma clave devuelve la respuesta ya dada, sin volver a validar el PIN ni tocar la base (util ante mala conectividad, cuando el cliente no supo si la primera peticion llego).",
+        "operationId" : "confirmDelivery",
+        "parameters" : [ {
+          "name" : "Idempotency-Key",
+          "in" : "header",
+          "description" : "Clave de idempotencia generada por el cliente (p. ej. un UUID por intento de confirmacion).",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
           }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ConfirmDeliveryRequest"
+              }
+            }
+          },
+          "required" : true
         },
-        "security": []
+        "responses" : {
+          "200" : {
+            "description" : "Entrega confirmada; se guarda la evidencia",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConfirmDeliveryResponse"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "PIN incorrecto",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Foto invalida (tamano, formato) o factura no encontrada/no publicada",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429" : {
+            "description" : "Demasiados intentos de confirmacion en poco tiempo para este conductor",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "La entrega ya habia sido confirmada",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "Circuito abierto: el ERP simulado no esta disponible",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/api/v1/auth/login": {
-      "post": {
-        "tags": [
-          "Autenticación"
-        ],
-        "summary": "Iniciar sesion",
-        "description": "Autentica por usuario y contrasena y devuelve el rol (ADMIN o CONDUCTOR). El JWT viaja en una cookie HttpOnly (no en el cuerpo de la respuesta), para que el JavaScript del frontend no pueda leerlo. Limitado por IP y usuario para mitigar fuerza bruta.",
-        "operationId": "login",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "429": {
-            "description": "Demasiados intentos de inicio de sesion; reintentar mas tarde",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Credenciales validas; la cookie de sesion queda establecida",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Usuario o contrasena incorrectos, o cuenta desactivada",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/LoginResponse"
-                }
-              }
-            }
+    "/api/v1/auth/logout" : {
+      "post" : {
+        "tags" : [ "Autenticación" ],
+        "summary" : "Cerrar sesion",
+        "description" : "Invalida la cookie de sesion (JWT) del lado del navegador. El backend no mantiene estado de sesion: esto solo borra la cookie, no revoca el token en el servidor.",
+        "operationId" : "logout",
+        "responses" : {
+          "204" : {
+            "description" : "Cookie de sesion eliminada"
           }
         },
-        "security": []
+        "security" : [ ]
       }
     },
-    "/api/v1/admin/users": {
-      "get": {
-        "tags": [
-          "Administración de usuarios"
-        ],
-        "summary": "Listar usuarios",
-        "description": "Administradores y conductores registrados, paginado (tamano maximo 100).",
-        "operationId": "list",
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 0
+    "/api/v1/auth/login" : {
+      "post" : {
+        "tags" : [ "Autenticación" ],
+        "summary" : "Iniciar sesion",
+        "description" : "Autentica por usuario y contrasena y devuelve el rol (ADMIN o CONDUCTOR). El JWT viaja en una cookie HttpOnly (no en el cuerpo de la respuesta), para que el JavaScript del frontend no pueda leerlo. Limitado por IP y usuario para mitigar fuerza bruta.",
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
             }
           },
-          {
-            "name": "size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            }
-          }
-        ],
-        "responses": {
-          "400": {
-            "description": "'size' supera el maximo permitido",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseDriverResponse"
+          "required" : true
+        },
+        "responses" : {
+          "429" : {
+            "description" : "Demasiados intentos de inicio de sesion; reintentar mas tarde",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Pagina de usuarios",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseDriverResponse"
+          "200" : {
+            "description" : "Credenciales validas; la cookie de sesion queda establecida",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Usuario o contrasena incorrectos, o cuenta desactivada",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/api/v1/admin/users" : {
+      "get" : {
+        "tags" : [ "Administración de usuarios" ],
+        "summary" : "Listar usuarios",
+        "description" : "Administradores y conductores registrados, paginado (tamano maximo 100).",
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Tamano de pagina (maximo 100).",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "type" : "integer",
+            "description" : "Tamano de pagina (maximo 100).",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "400" : {
+            "description" : "'size' supera el maximo permitido",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "Pagina de usuarios",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseDriverResponse"
                 }
               }
             }
           }
         }
       },
-      "post": {
-        "tags": [
-          "Administración de usuarios"
-        ],
-        "summary": "Crear un usuario",
-        "description": "Crea un administrador o conductor con contraseña ya hasheada (BCrypt).",
-        "operationId": "create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDriverRequest"
+      "post" : {
+        "tags" : [ "Administración de usuarios" ],
+        "summary" : "Crear un usuario",
+        "description" : "Crea un administrador o conductor con contraseña ya hasheada (BCrypt).",
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateDriverRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "201": {
-            "description": "Usuario creado; el header Location apunta al recurso",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+        "responses" : {
+          "201" : {
+            "description" : "Usuario creado; el header Location apunta al recurso",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DriverResponse"
                 }
               }
             }
           },
-          "409": {
-            "description": "Ya existe un usuario con ese username",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+          "409" : {
+            "description" : "Ya existe un usuario con ese username",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "Datos inválidos",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/DriverResponse"
+          "400" : {
+            "description" : "Datos inválidos",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -515,41 +490,39 @@
         }
       }
     },
-    "/api/v1/admin/resilience/simulate-failures": {
-      "post": {
-        "tags": [
-          "Resiliencia"
-        ],
-        "summary": "Simular fallas del ERP",
-        "description": "Fuerza N fallas dentro de las llamadas protegidas por el breaker y el retry, para demostrar tanto la recuperacion transparente de fallos aislados (Retry) como el ciclo cerrado -> abierto -> semiabierto -> cerrado (Circuit Breaker) ante una racha mas larga, sin depender de un ERP real.",
-        "operationId": "simulateFailures",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SimulateFailuresRequest"
+    "/api/v1/admin/resilience/simulate-failures" : {
+      "post" : {
+        "tags" : [ "Resiliencia" ],
+        "summary" : "Simular fallas del ERP",
+        "description" : "Fuerza N fallas dentro de las llamadas protegidas por el breaker y el retry, para demostrar tanto la recuperacion transparente de fallos aislados (Retry) como el ciclo cerrado -> abierto -> semiabierto -> cerrado (Circuit Breaker) ante una racha mas larga, sin depender de un ERP real.",
+        "operationId" : "simulateFailures",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SimulateFailuresRequest"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "400": {
-            "description": "count fuera del rango permitido (1 a 50)",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CircuitBreakerStatusResponse"
+        "responses" : {
+          "400" : {
+            "description" : "count fuera del rango permitido (1 a 50)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Fallas programadas; se devuelve el estado del breaker",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CircuitBreakerStatusResponse"
+          "200" : {
+            "description" : "Fallas programadas; se devuelve el estado del breaker",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CircuitBreakerStatusResponse"
                 }
               }
             }
@@ -557,112 +530,107 @@
         }
       }
     },
-    "/api/v1/admin/invoices": {
-      "get": {
-        "tags": [
-          "Facturas (admin)"
-        ],
-        "summary": "Listar facturas",
-        "description": "Facturas filtradas por numero o cliente, paginado (tamano maximo 100), incluido su estado y PIN vigente.",
-        "operationId": "list_1",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": ""
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 0
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            }
+    "/api/v1/admin/invoices" : {
+      "get" : {
+        "tags" : [ "Facturas (admin)" ],
+        "summary" : "Listar facturas",
+        "description" : "Facturas filtradas por numero o cliente, paginado (tamano maximo 100), incluido su estado y PIN vigente.",
+        "operationId" : "list_1",
+        "parameters" : [ {
+          "name" : "q",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : ""
           }
-        ],
-        "responses": {
-          "400": {
-            "description": "'size' supera el maximo permitido",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseAdminInvoiceResponse"
+        }, {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Tamano de pagina (maximo 100).",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "type" : "integer",
+            "description" : "Tamano de pagina (maximo 100).",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "400" : {
+            "description" : "'size' supera el maximo permitido",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Pagina de facturas",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseAdminInvoiceResponse"
+          "200" : {
+            "description" : "Pagina de facturas",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseAdminInvoiceResponse"
                 }
               }
             }
           }
         }
       },
-      "post": {
-        "tags": [
-          "Facturas (admin)"
-        ],
-        "summary": "Crear una factura",
-        "description": "Crea la factura en borrador, con sus lineas de producto. No genera PIN todavia: eso ocurre al publicarla.",
-        "operationId": "create_1",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateInvoice"
+      "post" : {
+        "tags" : [ "Facturas (admin)" ],
+        "summary" : "Crear una factura",
+        "description" : "Crea la factura en borrador, con sus lineas de producto. No genera PIN todavia: eso ocurre al publicarla.",
+        "operationId" : "create_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateInvoice"
               }
             }
           },
-          "required": true
+          "required" : true
         },
-        "responses": {
-          "400": {
-            "description": "Datos invalidos (campos requeridos, coordenadas fuera de rango, sin productos)",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminInvoiceResponse"
+        "responses" : {
+          "400" : {
+            "description" : "Datos invalidos (campos requeridos, coordenadas fuera de rango, sin productos)",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "409": {
-            "description": "Ya existe una factura con ese numero",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminInvoiceResponse"
+          "409" : {
+            "description" : "Ya existe una factura con ese numero",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "201": {
-            "description": "Factura creada; el header Location apunta al recurso",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminInvoiceResponse"
+          "201" : {
+            "description" : "Factura creada; el header Location apunta al recurso",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminInvoiceResponse"
                 }
               }
             }
@@ -670,42 +638,38 @@
         }
       }
     },
-    "/api/v1/admin/invoices/{id}/publish": {
-      "post": {
-        "tags": [
-          "Facturas (admin)"
-        ],
-        "summary": "Publicar una factura",
-        "description": "Genera el PIN de 6 digitos y deja la factura lista para que el conductor la confirme. El PIN se debe comunicar al cliente por un canal operativo aparte (Fase1 §3).",
-        "operationId": "publish",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
+    "/api/v1/admin/invoices/{id}/publish" : {
+      "post" : {
+        "tags" : [ "Facturas (admin)" ],
+        "summary" : "Publicar una factura",
+        "description" : "Genera el PIN de 6 digitos y deja la factura lista para que el conductor la confirme. El PIN se debe comunicar al cliente por un canal operativo aparte (Fase1 §3).",
+        "operationId" : "publish",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Factura publicada, con su PIN",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminInvoiceResponse"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Factura publicada, con su PIN",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminInvoiceResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "La factura no existe o ya estaba publicada",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminInvoiceResponse"
+          "400" : {
+            "description" : "La factura no existe o ya estaba publicada",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -713,33 +677,29 @@
         }
       }
     },
-    "/api/v1/driver/invoices": {
-      "get": {
-        "tags": [
-          "Entregas del conductor"
-        ],
-        "summary": "Buscar facturas pendientes de entrega",
-        "description": "Facturas publicadas, con PIN habilitado y aun no confirmadas, filtradas por numero o cliente.",
-        "operationId": "search",
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
+    "/api/v1/driver/invoices" : {
+      "get" : {
+        "tags" : [ "Entregas del conductor" ],
+        "summary" : "Buscar facturas pendientes de entrega",
+        "description" : "Facturas publicadas, con PIN habilitado y aun no confirmadas, filtradas por numero o cliente.",
+        "operationId" : "search",
+        "parameters" : [ {
+          "name" : "q",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Facturas que coinciden con la busqueda (hasta 20)",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/InvoiceResponse"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Facturas que coinciden con la busqueda (hasta 20)",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/InvoiceResponse"
                   }
                 }
               }
@@ -748,34 +708,30 @@
         }
       }
     },
-    "/api/v1/driver/invoices/{id}/lines": {
-      "get": {
-        "tags": [
-          "Entregas del conductor"
-        ],
-        "summary": "Lineas de una factura",
-        "description": "Productos vendidos en la factura, para el checklist de entrega del conductor.",
-        "operationId": "lines",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
+    "/api/v1/driver/invoices/{id}/lines" : {
+      "get" : {
+        "tags" : [ "Entregas del conductor" ],
+        "summary" : "Lineas de una factura",
+        "description" : "Productos vendidos en la factura, para el checklist de entrega del conductor.",
+        "operationId" : "lines",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Lineas de la factura",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/InvoiceLineResponse"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Lineas de la factura",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/InvoiceLineResponse"
                   }
                 }
               }
@@ -784,44 +740,39 @@
         }
       }
     },
-    "/api/v1/driver/deliveries/{id}/photo": {
-      "get": {
-        "tags": [
-          "Entregas del conductor"
-        ],
-        "summary": "Foto de una entrega propia",
-        "description": "Devuelve la foto de evidencia de una entrega del conductor autenticado (filtrada por driverId, evita IDOR).",
-        "operationId": "deliveryPhoto",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
+    "/api/v1/driver/deliveries/{id}/photo" : {
+      "get" : {
+        "tags" : [ "Entregas del conductor" ],
+        "summary" : "Foto de una entrega propia",
+        "description" : "Devuelve la foto de evidencia de una entrega del conductor autenticado (filtrada por driverId, evita IDOR).",
+        "operationId" : "deliveryPhoto",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
           }
-        ],
-        "responses": {
-          "404": {
-            "description": "No existe o no pertenece al conductor autenticado",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "No existe o no pertenece al conductor autenticado",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Imagen de la evidencia (JPEG o PNG)",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
+          "200" : {
+            "description" : "Imagen de la evidencia (JPEG o PNG)",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
                 }
               }
             }
@@ -829,53 +780,51 @@
         }
       }
     },
-    "/api/v1/driver/deliveries/history": {
-      "get": {
-        "tags": [
-          "Entregas del conductor"
-        ],
-        "summary": "Historial propio de entregas",
-        "description": "Entregas e incidencias del conductor autenticado, paginado (tamano maximo 100).",
-        "operationId": "history",
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 0
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            }
+    "/api/v1/driver/deliveries/history" : {
+      "get" : {
+        "tags" : [ "Entregas del conductor" ],
+        "summary" : "Historial propio de entregas",
+        "description" : "Entregas e incidencias del conductor autenticado, paginado (tamano maximo 100).",
+        "operationId" : "history",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
           }
-        ],
-        "responses": {
-          "400": {
-            "description": "'size' supera el maximo permitido",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseDeliveryAttemptResponse"
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Tamano de pagina (maximo 100).",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "type" : "integer",
+            "description" : "Tamano de pagina (maximo 100).",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "400" : {
+            "description" : "'size' supera el maximo permitido",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Pagina del historial",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseDeliveryAttemptResponse"
+          "200" : {
+            "description" : "Pagina del historial",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseDeliveryAttemptResponse"
                 }
               }
             }
@@ -883,21 +832,19 @@
         }
       }
     },
-    "/api/v1/admin/resilience/status": {
-      "get": {
-        "tags": [
-          "Resiliencia"
-        ],
-        "summary": "Estado del Circuit Breaker y del Retry",
-        "description": "Estado actual del breaker erpGateway (cerrado/abierto/semiabierto) y del retry erpGatewayRetry (llamadas que se recuperaron solas tras un fallo transitorio), habilitados o no, y tasas de exito/fallo.",
-        "operationId": "status",
-        "responses": {
-          "200": {
-            "description": "Estado del breaker y del retry",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/CircuitBreakerStatusResponse"
+    "/api/v1/admin/resilience/status" : {
+      "get" : {
+        "tags" : [ "Resiliencia" ],
+        "summary" : "Estado del Circuit Breaker y del Retry",
+        "description" : "Estado actual del breaker erpGateway (cerrado/abierto/semiabierto) y del retry erpGatewayRetry (llamadas que se recuperaron solas tras un fallo transitorio), habilitados o no, y tasas de exito/fallo.",
+        "operationId" : "status",
+        "responses" : {
+          "200" : {
+            "description" : "Estado del breaker y del retry",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CircuitBreakerStatusResponse"
                 }
               }
             }
@@ -905,98 +852,51 @@
         }
       }
     },
-    "/api/v1/admin/deliveries": {
-      "get": {
-        "tags": [
-          "Historial de entregas (admin)"
-        ],
-        "summary": "Historial de entregas",
-        "description": "Entregas e incidencias de todos los conductores, paginado (tamano maximo 100).",
-        "operationId": "list_2",
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 0
-            }
-          },
-          {
-            "name": "size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            }
+    "/api/v1/admin/deliveries" : {
+      "get" : {
+        "tags" : [ "Historial de entregas (admin)" ],
+        "summary" : "Historial de entregas",
+        "description" : "Entregas e incidencias de todos los conductores, paginado (tamano maximo 100).",
+        "operationId" : "list_2",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
           }
-        ],
-        "responses": {
-          "400": {
-            "description": "'size' supera el maximo permitido",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseDeliveryAttemptResponse"
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Tamano de pagina (maximo 100).",
+          "required" : false,
+          "schema" : {
+            "maximum" : 100,
+            "type" : "integer",
+            "description" : "Tamano de pagina (maximo 100).",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "400" : {
+            "description" : "'size' supera el maximo permitido",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
           },
-          "200": {
-            "description": "Pagina del historial",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/PageResponseDeliveryAttemptResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/admin/deliveries/{id}/photo": {
-      "get": {
-        "tags": [
-          "Historial de entregas (admin)"
-        ],
-        "summary": "Foto de una entrega",
-        "description": "Devuelve la foto de evidencia asociada al intento de entrega indicado.",
-        "operationId": "photo",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "404": {
-            "description": "No existe evidencia para ese intento",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
-                }
-              }
-            }
-          },
-          "200": {
-            "description": "Imagen de la evidencia (JPEG o PNG)",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "string",
-                  "format": "byte"
+          "200" : {
+            "description" : "Pagina del historial",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseDeliveryAttemptResponse"
                 }
               }
             }
@@ -1004,57 +904,91 @@
         }
       }
     },
-    "/api/v1/admin/dashboard/metrics": {
-      "get": {
-        "tags": [
-          "Tablero administrativo"
-        ],
-        "summary": "Metricas por conductor",
-        "description": "Entregas confirmadas, incidencias y otros conteos agregados por conductor, dentro del rango de fechas dado.",
-        "operationId": "metrics",
-        "parameters": [
-          {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
+    "/api/v1/admin/deliveries/{id}/photo" : {
+      "get" : {
+        "tags" : [ "Historial de entregas (admin)" ],
+        "summary" : "Foto de una entrega",
+        "description" : "Devuelve la foto de evidencia asociada al intento de entrega indicado.",
+        "operationId" : "photo",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "404" : {
+            "description" : "No existe evidencia para ese intento",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
+                }
+              }
             }
           },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
+          "200" : {
+            "description" : "Imagen de la evidencia (JPEG o PNG)",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
             }
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Metricas por conductor en el rango solicitado",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DriverMetricResponse"
+        }
+      }
+    },
+    "/api/v1/admin/dashboard/metrics" : {
+      "get" : {
+        "tags" : [ "Tablero administrativo" ],
+        "summary" : "Metricas por conductor",
+        "description" : "Entregas confirmadas, incidencias y otros conteos agregados por conductor, dentro del rango de fechas dado.",
+        "operationId" : "metrics",
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Inicio del rango (ISO-8601). El rango entre from y to no puede superar 93 dias.",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "description" : "Fin del rango (ISO-8601). No puede ser anterior a from.",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Metricas por conductor en el rango solicitado",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/DriverMetricResponse"
                   }
                 }
               }
             }
           },
-          "400": {
-            "description": "'to' anterior a 'from', o el rango supera los 93 dias",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DriverMetricResponse"
-                  }
+          "400" : {
+            "description" : "'to' anterior a 'from', o el rango supera los 93 dias",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1062,57 +996,51 @@
         }
       }
     },
-    "/api/v1/admin/dashboard/map": {
-      "get": {
-        "tags": [
-          "Tablero administrativo"
-        ],
-        "summary": "Mapa de entregas e incidencias",
-        "description": "Puntos con ubicacion (latitud/longitud) dentro del rango de fechas dado, para pintar en el mapa del panel.",
-        "operationId": "map",
-        "parameters": [
-          {
-            "name": "from",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "date-time"
-            }
+    "/api/v1/admin/dashboard/map" : {
+      "get" : {
+        "tags" : [ "Tablero administrativo" ],
+        "summary" : "Mapa de entregas e incidencias",
+        "description" : "Puntos con ubicacion (latitud/longitud) dentro del rango de fechas dado, para pintar en el mapa del panel.",
+        "operationId" : "map",
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Inicio del rango (ISO-8601). El rango entre from y to no puede superar 93 dias.",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Puntos del mapa en el rango solicitado",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeliveryAttemptResponse"
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "description" : "Fin del rango (ISO-8601). No puede ser anterior a from.",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Puntos del mapa en el rango solicitado",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/DeliveryAttemptResponse"
                   }
                 }
               }
             }
           },
-          "400": {
-            "description": "'to' anterior a 'from', o el rango supera los 93 dias",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeliveryAttemptResponse"
-                  }
+          "400" : {
+            "description" : "'to' anterior a 'from', o el rango supera los 93 dias",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1120,41 +1048,37 @@
         }
       }
     },
-    "/api/v1/admin/cost": {
-      "get": {
-        "tags": [
-          "Costo por entrega (showback)"
-        ],
-        "summary": "Costo por entrega del mes",
-        "description": "Showback (Fase1 §4.5): combina entregas confirmadas y GB de evidencia (calculados en SQL) con las tarifas configuradas y las horas de soporte de ese mes.",
-        "operationId": "get",
-        "parameters": [
-          {
-            "name": "month",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
+    "/api/v1/admin/cost" : {
+      "get" : {
+        "tags" : [ "Costo por entrega (showback)" ],
+        "summary" : "Costo por entrega del mes",
+        "description" : "Showback (Fase1 §4.5): combina entregas confirmadas y GB de evidencia (calculados en SQL) con las tarifas configuradas y las horas de soporte de ese mes.",
+        "operationId" : "get",
+        "parameters" : [ {
+          "name" : "month",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Costo calculado para el mes solicitado",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationalCostResponse"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Costo calculado para el mes solicitado",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/OperationalCostResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "El parametro month no tiene el formato yyyy-MM",
-            "content": {
-              "*/*": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationalCostResponse"
+          "400" : {
+            "description" : "El parametro month no tiene el formato yyyy-MM",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -1163,697 +1087,699 @@
       }
     }
   },
-  "components": {
-    "schemas": {
-      "UpdateDriverRequest": {
-        "required": [
-          "active",
-          "fullName"
-        ],
-        "type": "object",
-        "properties": {
-          "fullName": {
-            "type": "string",
-            "example": "Conductor Dos"
+  "components" : {
+    "schemas" : {
+      "UpdateDriverRequest" : {
+        "required" : [ "active", "fullName" ],
+        "type" : "object",
+        "properties" : {
+          "fullName" : {
+            "type" : "string",
+            "example" : "Conductor Dos"
           },
-          "active": {
-            "type": "boolean",
-            "example": true
+          "active" : {
+            "type" : "boolean",
+            "example" : true
           },
-          "password": {
-            "maxLength": 2147483647,
-            "minLength": 6,
-            "type": "string",
-            "description": "Opcional: si se omite o esta en blanco, conserva la contrasena actual."
+          "password" : {
+            "maxLength" : 2147483647,
+            "minLength" : 6,
+            "type" : "string",
+            "description" : "Opcional: si se omite o esta en blanco, conserva la contrasena actual."
           }
         }
       },
-      "DriverResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
+      "DriverResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "username": {
-            "type": "string"
+          "username" : {
+            "type" : "string"
           },
-          "fullName": {
-            "type": "string"
+          "fullName" : {
+            "type" : "string"
           },
-          "role": {
-            "type": "string"
+          "role" : {
+            "type" : "string",
+            "enum" : [ "ADMIN", "CONDUCTOR" ]
           },
-          "active": {
-            "type": "boolean"
+          "active" : {
+            "type" : "boolean"
           }
         }
       },
-      "SetSupportHoursRequest": {
-        "required": [
-          "hours",
-          "month"
-        ],
-        "type": "object",
-        "properties": {
-          "month": {
-            "pattern": "\\d{4}-\\d{2}",
-            "type": "string",
-            "example": "2026-09"
+      "SetSupportHoursRequest" : {
+        "required" : [ "hours", "month" ],
+        "type" : "object",
+        "properties" : {
+          "month" : {
+            "pattern" : "\\d{4}-\\d{2}",
+            "type" : "string",
+            "example" : "2026-09"
           },
-          "hours": {
-            "minimum": 0,
-            "exclusiveMinimum": false,
-            "type": "number",
-            "format": "double",
-            "example": 10
+          "hours" : {
+            "minimum" : 0,
+            "exclusiveMinimum" : false,
+            "type" : "number",
+            "format" : "double",
+            "example" : 10
           }
         }
       },
-      "OperationalCostResponse": {
-        "type": "object",
-        "properties": {
-          "month": {
-            "type": "string"
+      "OperationalCostResponse" : {
+        "type" : "object",
+        "properties" : {
+          "month" : {
+            "type" : "string"
           },
-          "confirmedDeliveries": {
-            "type": "integer",
-            "format": "int64"
+          "confirmedDeliveries" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "evidencePhotoBytes": {
-            "type": "integer",
-            "format": "int64"
+          "evidencePhotoBytes" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "evidenceStorageGb": {
-            "type": "number",
-            "format": "double"
+          "evidenceStorageGb" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "infrastructureCostUsd": {
-            "type": "number",
-            "format": "double"
+          "infrastructureCostUsd" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "storageCostUsd": {
-            "type": "number",
-            "format": "double"
+          "storageCostUsd" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "supportHours": {
-            "type": "number",
-            "format": "double"
+          "supportHours" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "supportCostUsd": {
-            "type": "number",
-            "format": "double"
+          "supportCostUsd" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "totalCostUsd": {
-            "type": "number",
-            "format": "double"
+          "totalCostUsd" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "costPerDeliveryUsd": {
-            "type": "number",
-            "format": "double"
+          "costPerDeliveryUsd" : {
+            "type" : "number",
+            "format" : "double"
           }
         }
       },
-      "ReportIncidentRequest": {
-        "required": [
-          "invoiceId",
-          "invoiceNumber",
-          "reason"
-        ],
-        "type": "object",
-        "properties": {
-          "invoiceId": {
-            "type": "integer",
-            "format": "int64",
-            "example": 42
+      "ReportIncidentRequest" : {
+        "required" : [ "invoiceId", "invoiceNumber", "reason" ],
+        "type" : "object",
+        "properties" : {
+          "invoiceId" : {
+            "type" : "integer",
+            "format" : "int64",
+            "example" : 42
           },
-          "invoiceNumber": {
-            "type": "string",
-            "example": "001-104-0000001234"
+          "invoiceNumber" : {
+            "type" : "string",
+            "example" : "001-104-0000001234"
           },
-          "partnerName": {
-            "type": "string",
-            "example": "Cliente de prueba"
+          "partnerName" : {
+            "type" : "string",
+            "example" : "Cliente de prueba"
           },
-          "deliveryAddress": {
-            "type": "string",
-            "example": "Calle de prueba, Guayaquil"
+          "deliveryAddress" : {
+            "type" : "string",
+            "example" : "Calle de prueba, Guayaquil"
           },
-          "reason": {
-            "type": "string",
-            "description": "Ver frontend/src/pages/driver/driverHome/incidentReasons.ts para los motivos que ofrece la PWA.",
-            "example": "Cliente ausente"
+          "reason" : {
+            "type" : "string",
+            "description" : "Motivo en texto libre. La aplicacion del conductor ofrece: Cliente ausente, Direccion incorrecta, Producto danado, Cliente rechazo la entrega y Otro.",
+            "example" : "Cliente ausente"
           },
-          "notes": {
-            "maxLength": 500,
-            "minLength": 0,
-            "type": "string",
-            "example": "Se llamo dos veces, nadie respondio."
+          "notes" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string",
+            "example" : "Se llamo dos veces, nadie respondio."
           },
-          "latitude": {
-            "type": "number",
-            "format": "double",
-            "example": -2.170998
+          "latitude" : {
+            "type" : "number",
+            "format" : "double",
+            "example" : -2.170998
           },
-          "longitude": {
-            "type": "number",
-            "format": "double",
-            "example": -79.922359
+          "longitude" : {
+            "type" : "number",
+            "format" : "double",
+            "example" : -79.922359
           }
         }
       },
-      "ReportIncidentResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+      "ReportIncidentResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
           },
-          "message": {
-            "type": "string"
+          "message" : {
+            "type" : "string"
           }
         }
       },
-      "ConfirmDeliveryRequest": {
-        "required": [
-          "invoiceId",
-          "latitude",
-          "longitude",
-          "photoBase64",
-          "pin"
-        ],
-        "type": "object",
-        "properties": {
-          "invoiceId": {
-            "type": "integer",
-            "format": "int64",
-            "example": 42
+      "ConfirmDeliveryRequest" : {
+        "required" : [ "invoiceId", "latitude", "longitude", "photoBase64", "pin" ],
+        "type" : "object",
+        "properties" : {
+          "invoiceId" : {
+            "type" : "integer",
+            "format" : "int64",
+            "example" : 42
           },
-          "pin": {
-            "pattern": "\\d{6}",
-            "type": "string",
-            "description": "PIN de 6 digitos comunicado al cliente al publicar la factura.",
-            "example": "123456"
+          "pin" : {
+            "pattern" : "\\d{6}",
+            "type" : "string",
+            "description" : "PIN de 6 digitos comunicado al cliente al publicar la factura.",
+            "example" : "123456"
           },
-          "latitude": {
-            "type": "number",
-            "format": "double",
-            "example": -2.170998
+          "latitude" : {
+            "type" : "number",
+            "format" : "double",
+            "example" : -2.170998
           },
-          "longitude": {
-            "type": "number",
-            "format": "double",
-            "example": -79.922359
+          "longitude" : {
+            "type" : "number",
+            "format" : "double",
+            "example" : -79.922359
           },
-          "photoBase64": {
-            "type": "string",
-            "description": "Foto en base64, con o sin el prefijo \"data:image/jpeg;base64,\". Debe decodificar a un JPEG o PNG real (verificado por los primeros bytes) de hasta 5 MB."
+          "photoBase64" : {
+            "type" : "string",
+            "description" : "Foto en base64, con o sin el prefijo \"data:image/jpeg;base64,\". Debe decodificar a un JPEG o PNG real (verificado por los primeros bytes) de hasta 5 MB."
           },
-          "photoFilename": {
-            "type": "string",
-            "example": "evidencia.jpg"
+          "photoFilename" : {
+            "type" : "string",
+            "example" : "evidencia.jpg"
           },
-          "photoContentType": {
-            "type": "string",
-            "example": "image/jpeg"
+          "photoContentType" : {
+            "type" : "string",
+            "example" : "image/jpeg"
           }
         }
       },
-      "ConfirmDeliveryResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+      "ConfirmDeliveryResponse" : {
+        "type" : "object",
+        "properties" : {
+          "success" : {
+            "type" : "boolean"
           },
-          "message": {
-            "type": "string"
+          "message" : {
+            "type" : "string"
           },
-          "photoUploaded": {
-            "type": "boolean"
+          "photoUploaded" : {
+            "type" : "boolean"
           }
         }
       },
-      "LoginRequest": {
-        "required": [
-          "password",
-          "username"
-        ],
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string",
-            "example": "admin"
+      "LoginRequest" : {
+        "required" : [ "password", "username" ],
+        "type" : "object",
+        "properties" : {
+          "username" : {
+            "type" : "string",
+            "example" : "admin"
           },
-          "password": {
-            "type": "string",
-            "format": "password",
-            "writeOnly": true,
-            "example": "admin123"
+          "password" : {
+            "type" : "string",
+            "format" : "password",
+            "writeOnly" : true,
+            "example" : "admin123"
           },
-          "remember": {
-            "type": "boolean",
-            "description": "\"Mantener mi sesion\": si es true, la cookie de sesion sobrevive a cerrar el navegador (dura app.jwt.expiration-minutes); si es false, se borra sola al cerrarlo.",
-            "default": false
+          "remember" : {
+            "type" : "boolean",
+            "description" : "\"Mantener mi sesion\": si es true, la cookie de sesion sobrevive a cerrar el navegador (dura app.jwt.expiration-minutes); si es false, se borra sola al cerrarlo.",
+            "default" : false
           }
         }
       },
-      "LoginResponse": {
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string"
+      "LoginResponse" : {
+        "type" : "object",
+        "properties" : {
+          "username" : {
+            "type" : "string"
           },
-          "fullName": {
-            "type": "string"
+          "fullName" : {
+            "type" : "string"
           },
-          "role": {
-            "type": "string"
+          "role" : {
+            "type" : "string",
+            "enum" : [ "ADMIN", "CONDUCTOR" ]
           }
         }
       },
-      "CreateDriverRequest": {
-        "required": [
-          "fullName",
-          "password",
-          "role",
-          "username"
-        ],
-        "type": "object",
-        "properties": {
-          "username": {
-            "type": "string",
-            "example": "conductor2"
+      "CreateDriverRequest" : {
+        "required" : [ "fullName", "password", "role", "username" ],
+        "type" : "object",
+        "properties" : {
+          "username" : {
+            "type" : "string",
+            "example" : "conductor2"
           },
-          "password": {
-            "maxLength": 2147483647,
-            "minLength": 6,
-            "type": "string",
-            "example": "conductor123"
+          "password" : {
+            "maxLength" : 2147483647,
+            "minLength" : 6,
+            "type" : "string",
+            "example" : "conductor123"
           },
-          "fullName": {
-            "type": "string",
-            "example": "Conductor Dos"
+          "fullName" : {
+            "type" : "string",
+            "example" : "Conductor Dos"
           },
-          "role": {
-            "type": "string",
-            "example": "CONDUCTOR",
-            "enum": [
-              "ADMIN",
-              "CONDUCTOR"
-            ]
+          "role" : {
+            "type" : "string",
+            "example" : "CONDUCTOR",
+            "enum" : [ "ADMIN", "CONDUCTOR" ]
           }
         }
       },
-      "SimulateFailuresRequest": {
-        "required": [
-          "count"
-        ],
-        "type": "object",
-        "properties": {
-          "count": {
-            "maximum": 50,
-            "minimum": 1,
-            "type": "integer",
-            "format": "int32"
+      "SimulateFailuresRequest" : {
+        "required" : [ "count" ],
+        "type" : "object",
+        "properties" : {
+          "count" : {
+            "maximum" : 50,
+            "minimum" : 1,
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       },
-      "CircuitBreakerStatusResponse": {
-        "type": "object",
-        "properties": {
-          "state": {
-            "type": "string"
+      "CircuitBreakerStatusResponse" : {
+        "type" : "object",
+        "properties" : {
+          "state" : {
+            "type" : "string"
           },
-          "enabled": {
-            "type": "boolean"
+          "enabled" : {
+            "type" : "boolean"
           },
-          "pendingSimulatedFailures": {
-            "type": "integer",
-            "format": "int32"
+          "pendingSimulatedFailures" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "failureRate": {
-            "type": "number",
-            "format": "float"
+          "failureRate" : {
+            "type" : "number",
+            "format" : "float"
           },
-          "numberOfSuccessfulCalls": {
-            "type": "integer",
-            "format": "int64"
+          "numberOfSuccessfulCalls" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "numberOfFailedCalls": {
-            "type": "integer",
-            "format": "int64"
+          "numberOfFailedCalls" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "numberOfNotPermittedCalls": {
-            "type": "integer",
-            "format": "int64"
+          "numberOfNotPermittedCalls" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "retryEnabled": {
-            "type": "boolean"
+          "retryEnabled" : {
+            "type" : "boolean"
           },
-          "retrySuccessfulCallsWithoutRetry": {
-            "type": "integer",
-            "format": "int64"
+          "retrySuccessfulCallsWithoutRetry" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "retrySuccessfulCallsWithRetry": {
-            "type": "integer",
-            "format": "int64"
+          "retrySuccessfulCallsWithRetry" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "retryFailedCallsWithRetry": {
-            "type": "integer",
-            "format": "int64"
+          "retryFailedCallsWithRetry" : {
+            "type" : "integer",
+            "format" : "int64"
           }
         }
       },
-      "CreateInvoice": {
-        "required": [
-          "number",
-          "partnerName",
-          "products"
-        ],
-        "type": "object",
-        "properties": {
-          "number": {
-            "maxLength": 60,
-            "minLength": 0,
-            "type": "string",
-            "example": "001-104-0000001234"
+      "CreateInvoice" : {
+        "required" : [ "number", "partnerName", "products" ],
+        "type" : "object",
+        "properties" : {
+          "number" : {
+            "maxLength" : 60,
+            "minLength" : 0,
+            "type" : "string",
+            "example" : "001-104-0000001234"
           },
-          "partnerName": {
-            "maxLength": 255,
-            "minLength": 0,
-            "type": "string",
-            "example": "Cliente de prueba"
+          "partnerName" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string",
+            "example" : "Cliente de prueba"
           },
-          "deliveryAddress": {
-            "maxLength": 255,
-            "minLength": 0,
-            "type": "string",
-            "example": "Calle de prueba, Guayaquil"
+          "deliveryAddress" : {
+            "maxLength" : 255,
+            "minLength" : 0,
+            "type" : "string",
+            "example" : "Calle de prueba, Guayaquil"
           },
-          "latitude": {
-            "maximum": 90,
-            "exclusiveMaximum": false,
-            "minimum": -90,
-            "exclusiveMinimum": false,
-            "type": "number",
-            "format": "double",
-            "example": -2.170998
+          "latitude" : {
+            "maximum" : 90,
+            "exclusiveMaximum" : false,
+            "minimum" : -90,
+            "exclusiveMinimum" : false,
+            "type" : "number",
+            "format" : "double",
+            "example" : -2.170998
           },
-          "longitude": {
-            "maximum": 180,
-            "exclusiveMaximum": false,
-            "minimum": -180,
-            "exclusiveMinimum": false,
-            "type": "number",
-            "format": "double",
-            "example": -79.922359
+          "longitude" : {
+            "maximum" : 180,
+            "exclusiveMaximum" : false,
+            "minimum" : -180,
+            "exclusiveMinimum" : false,
+            "type" : "number",
+            "format" : "double",
+            "example" : -79.922359
           },
-          "requiresPin": {
-            "type": "boolean",
-            "description": "Si es true, publicar() genera un PIN de 6 digitos.",
-            "default": true
+          "requiresPin" : {
+            "type" : "boolean",
+            "description" : "Si es true, publicar() genera un PIN de 6 digitos.",
+            "default" : true
           },
-          "products": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Product"
+          "products" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Product"
             }
           }
         }
       },
-      "Product": {
-        "required": [
-          "description",
-          "quantity"
-        ],
-        "type": "object",
-        "properties": {
-          "description": {
-            "type": "string",
-            "example": "Arroz blanco - funda 1 kg"
+      "Product" : {
+        "required" : [ "description", "quantity" ],
+        "type" : "object",
+        "properties" : {
+          "description" : {
+            "type" : "string",
+            "example" : "Arroz blanco - funda 1 kg"
           },
-          "quantity": {
-            "type": "number",
-            "format": "double",
-            "example": 2
+          "quantity" : {
+            "type" : "number",
+            "format" : "double",
+            "example" : 2
           }
         }
       },
-      "AdminInvoiceResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
+      "AdminInvoiceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "number": {
-            "type": "string"
+          "number" : {
+            "type" : "string"
           },
-          "partnerName": {
-            "type": "string"
+          "partnerName" : {
+            "type" : "string"
           },
-          "deliveryAddress": {
-            "type": "string"
+          "deliveryAddress" : {
+            "type" : "string"
           },
-          "invoiceDate": {
-            "type": "string"
+          "invoiceDate" : {
+            "type" : "string"
           },
-          "state": {
-            "type": "string"
+          "state" : {
+            "type" : "string",
+            "enum" : [ "draft", "posted", "cancel" ]
           },
-          "requiresPin": {
-            "type": "boolean"
+          "requiresPin" : {
+            "type" : "boolean"
           },
-          "pin": {
-            "type": "string"
+          "pin" : {
+            "type" : "string"
           },
-          "confirmed": {
-            "type": "boolean"
+          "confirmed" : {
+            "type" : "boolean"
           },
-          "expectedLatitude": {
-            "type": "number",
-            "format": "double"
+          "expectedLatitude" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "expectedLongitude": {
-            "type": "number",
-            "format": "double"
+          "expectedLongitude" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "createdBy": {
-            "type": "string"
+          "createdBy" : {
+            "type" : "string"
           },
-          "publishedBy": {
-            "type": "string"
+          "publishedBy" : {
+            "type" : "string"
           }
         }
       },
-      "InvoiceResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
+      "InvoiceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "number": {
-            "type": "string"
+          "number" : {
+            "type" : "string"
           },
-          "partnerName": {
-            "type": "string"
+          "partnerName" : {
+            "type" : "string"
           },
-          "deliveryAddress": {
-            "type": "string"
+          "deliveryAddress" : {
+            "type" : "string"
           },
-          "invoiceDate": {
-            "type": "string"
+          "invoiceDate" : {
+            "type" : "string"
           },
-          "state": {
-            "type": "string"
+          "state" : {
+            "type" : "string",
+            "enum" : [ "draft", "posted", "cancel" ]
           },
-          "expectedLatitude": {
-            "type": "number",
-            "format": "double"
+          "expectedLatitude" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "expectedLongitude": {
-            "type": "number",
-            "format": "double"
+          "expectedLongitude" : {
+            "type" : "number",
+            "format" : "double"
           }
         }
       },
-      "InvoiceLineResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
+      "InvoiceLineResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "description": {
-            "type": "string"
+          "description" : {
+            "type" : "string"
           },
-          "quantity": {
-            "type": "number",
-            "format": "double"
+          "quantity" : {
+            "type" : "number",
+            "format" : "double"
           }
         }
       },
-      "DeliveryAttemptResponse": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "format": "int64"
+      "DeliveryAttemptResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "invoiceId": {
-            "type": "integer",
-            "format": "int64"
+          "invoiceId" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "invoiceNumber": {
-            "type": "string"
+          "invoiceNumber" : {
+            "type" : "string"
           },
-          "partnerName": {
-            "type": "string"
+          "partnerName" : {
+            "type" : "string"
           },
-          "deliveryAddress": {
-            "type": "string"
+          "deliveryAddress" : {
+            "type" : "string"
           },
-          "driverName": {
-            "type": "string"
+          "driverName" : {
+            "type" : "string"
           },
-          "outcome": {
-            "type": "string"
+          "outcome" : {
+            "type" : "string",
+            "enum" : [ "CONFIRMED", "REJECTED", "INCIDENT" ]
           },
-          "latitude": {
-            "type": "number",
-            "format": "double"
+          "latitude" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "longitude": {
-            "type": "number",
-            "format": "double"
+          "longitude" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "detail": {
-            "type": "string"
+          "detail" : {
+            "type" : "string"
           },
-          "hasPhoto": {
-            "type": "boolean"
+          "hasPhoto" : {
+            "type" : "boolean"
           },
-          "distanceFromExpectedMeters": {
-            "type": "number",
-            "format": "double"
+          "distanceFromExpectedMeters" : {
+            "type" : "number",
+            "format" : "double"
           },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
           }
         }
       },
-      "PageResponseDeliveryAttemptResponse": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DeliveryAttemptResponse"
+      "PageResponseDeliveryAttemptResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DeliveryAttemptResponse"
             }
           },
-          "page": {
-            "type": "integer",
-            "format": "int32"
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "size": {
-            "type": "integer",
-            "format": "int32"
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "totalElements": {
-            "type": "integer",
-            "format": "int64"
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "totalPages": {
-            "type": "integer",
-            "format": "int32"
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       },
-      "PageResponseDriverResponse": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DriverResponse"
+      "PageResponseDriverResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DriverResponse"
             }
           },
-          "page": {
-            "type": "integer",
-            "format": "int32"
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "size": {
-            "type": "integer",
-            "format": "int32"
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "totalElements": {
-            "type": "integer",
-            "format": "int64"
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "totalPages": {
-            "type": "integer",
-            "format": "int32"
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       },
-      "PageResponseAdminInvoiceResponse": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AdminInvoiceResponse"
+      "PageResponseAdminInvoiceResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AdminInvoiceResponse"
             }
           },
-          "page": {
-            "type": "integer",
-            "format": "int32"
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "size": {
-            "type": "integer",
-            "format": "int32"
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
           },
-          "totalElements": {
-            "type": "integer",
-            "format": "int64"
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "totalPages": {
-            "type": "integer",
-            "format": "int32"
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
           }
         }
       },
-      "DriverMetricResponse": {
-        "type": "object",
-        "properties": {
-          "driverName": {
-            "type": "string"
+      "DriverMetricResponse" : {
+        "type" : "object",
+        "properties" : {
+          "driverName" : {
+            "type" : "string"
           },
-          "confirmed": {
-            "type": "integer",
-            "format": "int64"
+          "confirmed" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "rejected": {
-            "type": "integer",
-            "format": "int64"
+          "rejected" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "incident": {
-            "type": "integer",
-            "format": "int64"
+          "incident" : {
+            "type" : "integer",
+            "format" : "int64"
           },
-          "total": {
-            "type": "integer",
-            "format": "int64"
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
           }
         }
+      },
+      "ErrorResponse" : {
+        "type" : "object",
+        "properties" : {
+          "message" : {
+            "type" : "string",
+            "description" : "Mensaje legible para mostrar al usuario.",
+            "example" : "El PIN ingresado no es correcto."
+          },
+          "errors" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string",
+              "description" : "Detalle por campo, solo presente en errores de validacion (400 de Bean Validation).",
+              "example" : "{\"pin\":\"El PIN debe tener 6 digitos\"}"
+            },
+            "description" : "Detalle por campo, solo presente en errores de validacion (400 de Bean Validation).",
+            "example" : {
+              "pin" : "El PIN debe tener 6 digitos"
+            }
+          },
+          "path" : {
+            "type" : "string",
+            "description" : "Ruta donde ocurrio el error.",
+            "example" : "/api/v1/driver/deliveries/confirm"
+          },
+          "timestamp" : {
+            "type" : "string",
+            "description" : "Instante del error, en UTC.",
+            "format" : "date-time"
+          }
+        },
+        "description" : "Forma unica de error de la API. Todas las respuestas 4xx/5xx usan este contrato."
       }
     },
-    "securitySchemes": {
-      "sessionCookie": {
-        "type": "apiKey",
-        "name": "access_token",
-        "in": "cookie"
+    "securitySchemes" : {
+      "sessionCookie" : {
+        "type" : "apiKey",
+        "name" : "access_token",
+        "in" : "cookie"
       }
     }
   }

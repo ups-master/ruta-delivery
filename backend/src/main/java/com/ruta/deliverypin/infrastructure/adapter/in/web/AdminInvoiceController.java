@@ -60,7 +60,7 @@ public class AdminInvoiceController {
     public PageResponse<AdminInvoiceResponse> list(
             @RequestParam(defaultValue = "") String q,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") @Schema(type = "integer", format = "int32", defaultValue = "20", maximum = "100", description = "Tamano de pagina (maximo 100).") int size
     ) {
         var result = manageInvoicesUseCase.list(q, new PageRequest(page, size));
         return PageResponse.from(result, AdminInvoiceResponse::from);

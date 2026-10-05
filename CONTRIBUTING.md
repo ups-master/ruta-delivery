@@ -51,6 +51,21 @@ mayor peso -- normalmente el de `backend/`/`frontend/` si lo hay.
 Un commit sin alguno de estos prefijos no rompe nada, pero `commit-analyzer` lo trata
 como si no aportara nada a la version -- usa el prefijo que corresponda.
 
+## Cambios de API (contract-first)
+
+`docs/openapi.json` es la fuente de verdad del contrato de la API. Para agregar o cambiar un
+endpoint, campo, codigo de respuesta o enum:
+
+1. Edita primero `docs/openapi.json` y revisalo en el PR junto con el codigo.
+2. Implementa el cambio en el backend hasta que `OpenApiContractIntegrationTest` pase: el
+   test compara `/v3/api-docs` contra el archivo y falla si difieren en cualquier direccion.
+3. Si el contrato ya es el correcto y solo hay que sincronizar el archivo con un cambio de
+   anotaciones, el JSON real queda en `backend/target/openapi-actual.json`; revisa el diff
+   antes de copiarlo.
+
+Toda respuesta 4xx/5xx se documenta con el schema `ErrorResponse`, que se agrega solo
+(`OpenApiConfig`); no lo anotes por endpoint.
+
 ## Pull Requests
 
 - **Contra `develop`**: requiere que `CI` (backend-test + frontend-build) este en verde.

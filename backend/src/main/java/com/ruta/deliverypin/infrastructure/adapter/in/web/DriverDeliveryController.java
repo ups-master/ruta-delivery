@@ -21,6 +21,7 @@ import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.ReportIncidentResp
 import com.ruta.deliverypin.infrastructure.adapter.in.web.security.ConfirmRateLimiter;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.security.CurrentDriverResolver;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.security.IdempotencyKeyStore;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -185,7 +186,7 @@ public class DriverDeliveryController {
     @GetMapping("/deliveries/history")
     public PageResponse<DeliveryAttemptResponse> history(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") @Schema(type = "integer", format = "int32", defaultValue = "20", maximum = "100", description = "Tamano de pagina (maximo 100).") int size
     ) {
         Driver driver = currentDriverResolver.resolve();
         var result = listDriverDeliveryHistoryUseCase.list(driver.getId(), new PageRequest(page, size));

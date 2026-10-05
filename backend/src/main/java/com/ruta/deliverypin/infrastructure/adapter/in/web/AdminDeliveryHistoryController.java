@@ -6,6 +6,7 @@ import com.ruta.deliverypin.domain.port.in.GetDeliveryPhotoUseCase;
 import com.ruta.deliverypin.domain.port.in.ListDeliveryHistoryUseCase;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.DeliveryAttemptResponse;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.PageResponse;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -42,7 +43,7 @@ public class AdminDeliveryHistoryController {
     @GetMapping
     public PageResponse<DeliveryAttemptResponse> list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") @Schema(type = "integer", format = "int32", defaultValue = "20", maximum = "100", description = "Tamano de pagina (maximo 100).") int size
     ) {
         var result = listDeliveryHistoryUseCase.list(new PageRequest(page, size));
         return PageResponse.from(result, DeliveryAttemptResponse::from);

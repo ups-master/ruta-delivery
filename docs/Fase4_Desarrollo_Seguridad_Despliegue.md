@@ -280,15 +280,28 @@ calculan con la hora de inicio de cada corrida de k6.
 
 ![Sostenida: local vs producción](../load-tests/comparativa/sustained_local_vs_produccion.png)
 
-- **Latencia base y generador de carga:** el mínimo por petición ronda 86–90 ms en producción, frente a 7,0 ms de
-  p95 en local (donde no hay red de por medio), por lo que no son comparables 1 a 1. k6 se ejecutó como un
-  contenedor Docker sobre WSL2 en Windows: las latencias medidas incluyen la red virtual de ese entorno y la CPU de
-  la máquina que genera la carga, y no se midió cuánto aporta cada parte. Una lectura puntual con `curl` desde la
-  shell de esa misma máquina (sin contenedor) dio ~5 ms hasta el primer byte para `/healthz` y ~8 ms para las
-  líneas de factura (§3.7), así que parte de la base puede no ser del servidor. El efecto es conservador: el
-  overhead del generador solo puede aumentar las latencias medidas, no reducirlas, de modo que los umbrales que
-  se cumplen (p95 de 122 ms frente a 500 ms con 150 VUs) se cumplen igual, o con más margen, en el servidor. La
-  forma sí es comparable: local y producción cumplen los umbrales con la misma carga.
+- **Latencia base: acotada, no explicada.** El mínimo por petición en producción ronda 86–90 ms y la mediana
+  ~96 ms (p95 de 122 ms con 150 VUs), frente a 7,0 ms de p95 en local. Según el desglose de k6, ese tiempo es casi
+  todo espera del primer byte (`http_req_waiting`, 108,4 ms de promedio sobre 108,4 ms de duración); la conexión,
+  el TLS, el envío y la recepción suman menos de 1 ms en la sostenida. Se descartaron dos causas con mediciones
+  puntuales (peticiones de una en una, 10 por endpoint, una sola conexión, tiempo hasta el primer byte con `curl`
+  desde WSL, el mismo entorno en que corre k6):
+
+  | Endpoint | `curl` desde la shell de WSL | `curl` desde un contenedor Docker |
+  |---|---:|---:|
+  | `/healthz` (solo nginx) | 9,6 ms | 9,7 ms |
+  | Facturas del conductor | 11,9 ms | 10,5 ms |
+  | Historial de entregas | 10,2 ms | 10,3 ms |
+  | Tablero: mapa y métricas | 10,2 / 10,3 ms | 10,3 / 10,2 ms |
+  | Costo y estado de resiliencia | 10,2 / 10,2 ms | 10,3 / 10,1 ms |
+
+  La red virtual de Docker sobre WSL2 no añade latencia (contenedor ≈ shell), y los endpoints de la carga,
+  incluidos los del tablero, no son lentos por sí mismos (~10 ms, casi lo mismo que `/healthz`). La causa de los
+  ~86–96 ms que registra k6 **no se determinó**: queda como hipótesis, sin comprobar, el patrón de k6 (cada VU
+  lanza lotes de 6 peticiones en paralelo con la misma sesión) o un efecto de su generador. Por eso las
+  latencias absolutas de producción se reportan tal como las mide k6, que es contra lo que se evalúan los
+  umbrales, y no deben leerse como el tiempo de respuesta de una petición aislada (~10 ms). La forma sí es
+  comparable: local y producción cumplen los umbrales con la misma carga.
 - **Es un monolito en una sola instancia, la carga no se distribuye.** Todo el tráfico entra a un único nodo
   (un contenedor backend con 1 GB de memoria, una JVM, un pool de 10 conexiones y una EC2; la BD es RDS,
   aparte), así que estas pruebas miden la capacidad *de una instancia*: ~590 req/s sostenidos con error 0 % y

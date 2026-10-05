@@ -304,11 +304,13 @@ calculan con la hora de inicio de cada corrida de k6.
 | Errores | 0 % | 0 % |
 
 Con la misma carga y el mismo perfil de prueba, ambos cumplen los umbrales (error < 1 %, p95 < 500 ms).
-La diferencia de latencia no está desglosada entre red y servidor: local corre en la red de Docker, sin red de
-por medio, y el mínimo de las corridas en producción es de ~86 ms. k6 corrió como contenedor Docker sobre WSL2 en
-Windows, así que sus latencias incluyen ese entorno (red virtual y CPU de la máquina); una lectura puntual con `curl`
-desde la shell de la misma máquina dio ~5 ms hasta el primer byte para `/healthz`. El overhead del generador solo
-puede inflar las latencias medidas, por lo que los umbrales cumplidos se cumplen igual en el servidor.
+La latencia de producción es ~86–96 ms por petición frente a ~7 ms en local, y en el desglose de k6 es casi toda
+espera del primer byte (`http_req_waiting`); la conexión, el TLS y la transferencia suman menos de 1 ms. Mediciones
+puntuales con `curl` (de una en una, tiempo hasta el primer byte) dieron ~10 ms para todos los endpoints de la
+carga, tanto desde la shell de WSL como desde un contenedor Docker: la red virtual no añade latencia y los
+endpoints no son lentos por sí mismos. La causa de los ~86–96 ms de k6 no se determinó (hipótesis sin comprobar: el
+patrón de lotes de 6 peticiones en paralelo por VU, o el generador); las latencias de producción se reportan como las
+mide k6 y no equivalen al tiempo de una petición aislada.
 
 **Lectura:**
 
@@ -347,10 +349,10 @@ el código de negocio corre en un único proceso. No hay balanceador ni réplica
   local es una máquina de desarrollo con CPU holgada y sin red de por medio; la EC2 es una
   instancia mucho más pequeña, accedida por red. La comparación mide *tamaño de nodo*, no
   un cambio de arquitectura.
-- **El generador también es un solo punto.** k6 corre como contenedor Docker sobre WSL2 en Windows,
-  desde una única máquina y una única ruta de red, así que parte de la latencia base, de la cola y de los
-  outliers de conexión puede venir del lado del cliente y no del servidor. No se midió ese overhead; es un sesgo
-  conservador (solo puede aumentar las latencias medidas).
+- **El generador también es un solo punto.** k6 corre como contenedor Docker sobre WSL2 en Windows, desde una
+  única máquina y una única ruta de red, así que parte de la cola y de los outliers de conexión puede venir
+  del lado del cliente y no del servidor. La red de Docker no añade latencia (comprobado con `curl`), pero el
+  origen de la latencia base de ~86–96 ms de k6 sigue sin determinarse.
 
 **Qué implica para escalar.** Con un monolito de una instancia, la salida inmediata es
 **vertical** (más vCPU/RAM, subir `DB_POOL_MAX_SIZE`; en la ronda local pasar el pool de 10

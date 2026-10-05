@@ -183,17 +183,25 @@ peticiones fallidas y no como latencia.
 
 - **La latencia base es de red:** el mínimo ronda 86–107 ms (RTT de ~100 ms hasta la EC2),
   frente a 5,3 ms de p95 en local; no son comparables 1 a 1.
-- **Los errores del spike no los produce el Circuit Breaker.** El `check` del escenario
+- **Los errores son 502 del nginx de borde, no de la aplicación.** El `check` del escenario
   acepta 200 y 503, y los fallos coinciden exactamente con las peticiones fallidas
-  (8 550 y 19 805), así que ninguna fue un 503 por circuito abierto. El código concreto
-  (por ejemplo 502/504 del nginx o tiempo agotado) no está desglosado en el resumen de k6 y
-  queda **por determinar** con el log de acceso del nginx.
+  (8 550 y 19 805), así que ninguna fue un 503 del Circuit Breaker. El log del nginx durante
+  la corrida muestra `connect() to <backend>:8080 failed (99: Address not available)` y la
+  respuesta `502` a esa misma petición: el nginx no logra abrir la conexión hacia el backend.
+  Es el agotamiento de puertos efímeros del contenedor del nginx, que abre una conexión TCP
+  nueva por cada petición (`proxy_pass` directo, sin `keepalive` hacia el backend ni HTTP/1.1)
+  y deja cada una en `TIME_WAIT`. Con el rango por defecto (~28 000 puertos) y 60 s de
+  `TIME_WAIT`, el techo teórico ronda los 470 conexiones por segundo, coherente con el
+  punto donde empiezan los errores (303–388 req/s). Los `499` del log son peticiones que k6
+  cerró al cortar la prueba. Que la causa sea esa se infiere del log y de la
+  configuración; no se probó aún modificándola.
 - **Es un monolito en una sola instancia, la carga no se distribuye.** Todo el tráfico
   entra a un único nodo (un contenedor backend con 1 GB de memoria, una JVM, un pool de 10
   conexiones y una EC2; la BD es RDS, aparte). Por eso estas pruebas miden la capacidad *de
-  una instancia*, y los seis endpoints de cada iteración comparten CPU y pool. Qué recurso
-  limita primero (CPU, memoria del contenedor, pool de conexiones o créditos de la
-  instancia) **no está medido** en estas corridas. Escalar horizontalmente es posible (la
+  una instancia*, y los seis endpoints de cada iteración comparten CPU y pool. El log
+  del nginx indica que el primer límite alcanzado es la conexión nginx → backend, no la JVM;
+  la CPU, la memoria del contenedor y el pool de conexiones **no se midieron** en estas
+  corridas, así que no se sabe cuál limitaría después. Escalar horizontalmente es posible (la
   sesión es una cookie JWT sin estado en el servidor), pero la caché Caffeine y el rate
   limiting de bucket4j son locales a cada instancia y habría que revisarlos antes de
   agregar réplicas; la vía inmediata es vertical (más vCPU/RAM y `DB_POOL_MAX_SIZE`).

@@ -202,11 +202,14 @@ redactado) en `production/`; los originales de `results/` siguen ignorados por g
   1 000 ms). El throughput aun así sube (450 → 589 req/s). No son los 5-10× de la carga
   normal que pide el enunciado: 300 VUs son 4× los 75 VUs que la instancia sostiene sin
   errores, y el spike completo (750 VUs, `LOAD_SCALE=1`) no se corrió en producción.
-- **Los errores del spike no son 503.** El `check` de `spike.js` acepta 200 o 503, y sus
-  fallos (8 550 y 19 805) coinciden exactamente con las peticiones fallidas: ninguna fue un
-  503 del Circuit Breaker abierto. Qué respuesta fue (502/504 del nginx, tiempo agotado,
-  conexión rechazada u otra) **por determinar**: el resumen de k6 no desglosa por código; se
-  confirma con el log de acceso del nginx de la EC2 en la ventana de cada corrida.
+- **Los errores son 502 del nginx, no de la aplicación.** Los fallos del `check` (8 550 y
+  19 805) coinciden con las peticiones fallidas: ninguna fue un 503 del Circuit Breaker. El
+  log del nginx muestra `connect() to <backend>:8080 failed (99: Address not available)` y la
+  respuesta `502`: el nginx no consigue abrir la conexión hacia el backend por agotamiento de
+  puertos efímeros, porque abre una conexión nueva por petición (`proxy_pass` directo, sin
+  `keepalive` ni HTTP/1.1 hacia el backend). Los `499` del log son peticiones que k6 cerró al
+  cortar la prueba. Es una inferencia a partir del log y de la configuración; falta
+  comprobarla aplicando `keepalive` y repitiendo la corrida.
 - **Breakpoint (`breakpoint.js` con `LOAD_SCALE=0.1`).** `ramping-arrival-rate` cuenta
   *iteraciones* por segundo y cada iteración hace 6 peticiones, así que `0.1` arranca en 50
   iteraciones/s (~300 req/s), ya en el nivel que la instancia sostiene. La corrida se cortó
@@ -240,10 +243,10 @@ degradarse con 750 VUs, y la EC2 empieza a perder peticiones entre 75 y 105 VUs.
 - **La capacidad medida de esta instancia es ~300 req/s sin errores (75 VUs) y satura
   entre 303 y 388 req/s.** Con 0.5 aparece la primera degradación (p95 105→210 ms, p99
   131→347 ms, sin errores); con 0.7 el throughput deja de crecer linealmente (388 req/s
-  frente a ~424 esperados) y empiezan los errores (6,35 %). Una parte de las peticiones
-  hace cola o se pierde en el servidor; qué recurso limita (CPU de la EC2, memoria del
-  contenedor de 1 GB, pool Hikari/RDS o créditos de instancia) **no está medido**: no hay
-  CPU ni memoria de estas corridas.
+  frente a ~424 esperados) y empiezan los errores (6,35 %). Las peticiones perdidas
+  son 502 del nginx al abrir la conexión hacia el backend (ver arriba); CPU de la EC2,
+  memoria del contenedor de 1 GB y pool Hikari/RDS **no están medidos**, así que no se sabe
+  cuál limitaría después.
 - A diferencia del local, aquí **sí hay errores**, no solo latencia: el sistema pasa de
   degradarse con cola a rechazar o perder peticiones al superar su capacidad.
 - Hay outliers aislados (20,5 s en una petición de la corrida 0.2; bloqueos de conexión de

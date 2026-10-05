@@ -144,8 +144,8 @@ Tras el pico corre una **fase de recuperación** de 2 min con 5 VUs: p95 = 6,65 
 error, es decir, el sistema vuelve solo a su latencia normal sin caídas en cascada. El Circuit
 Breaker queda `CLOSED`, sin ninguna llamada rechazada ni reintento, sin señal de saturación.
 Los códigos de respuesta fueron todos 200. La caché de lecturas y el rate limiting de la
-aplicación no se aíslan en esta prueba (solo hay lecturas del admin) y no hay autoescalado:
-es una sola instancia.
+aplicación no se aíslan en esta prueba (solo hay lecturas del admin) y se comprueban aparte en §3.7; no hay
+autoescalado (una sola instancia): ver la propuesta de §3.8.
 
 ### 3.3 Punto de ruptura (Breakpoint)
 
@@ -300,7 +300,7 @@ calculan con la hora de inicio de cada corrida de k6.
 | Spike: 5–10× la carga normal | 750 VUs = 5× la meseta de 150 (local); 503 y 750 VUs = 6,7× y 10× los 75 VUs de carga normal (producción) | ✅ |
 | Spike: subida abrupta, pico de 1–2 min, bajada a 0 inmediata | 10 s de subida, 1 min 30 s, 5 s de bajada | ✅ (no es un salto instantáneo) |
 | Spike: análisis de recuperación | Fase de 2 min: p95 104–105 ms y 0 % de error en producción; 6,65 ms y 0 % en local | ✅ |
-| Spike: caché, rate limiting y autoescalado | Hay caché y rate limiting en la aplicación, pero esta prueba no aísla su efecto; no hay autoescalado (una instancia) | ⚠️ no evaluado |
+| Spike: caché, rate limiting y autoescalado | Caché (0 consultas a la BD con caché caliente) y rate limiting (429 tras 5 intentos) comprobados en local (§3.7). No hay autoescalado: una sola instancia, con propuesta en §3.8 | ✅ caché y rate limiting (local) · ⚠️ autoescalado no implementado |
 | Rendimiento (RPS) | En cada tabla | ✅ |
 | Latencia: promedio, p90, p95, p99 | En cada tabla | ✅ |
 | Tasa de error y códigos HTTP | Error en cada tabla; conteo por código (200, `status 0`) | ✅ |
@@ -308,6 +308,62 @@ calculan con la hora de inicio de cada corrida de k6.
 | Gráficas y tablas | `load-tests/*/graficas/` y tablas de las secciones 3.1–3.5 | ✅ |
 
 El detalle completo, con las gráficas y los JSON crudos, vive en `load-tests/README.md`.
+
+### 3.7 Caché y rate limiting (comprobación funcional, stack local)
+
+Las pruebas de carga solo hacen lecturas que no pasan por la caché de líneas de factura ni por el limitador
+de login, así que su efecto se comprueba aparte con peticiones reales
+(`load-tests/verificar_cache_ratelimit.sh`, ejecutado contra el stack local con el backend recién reiniciado).
+
+**Rate limiting del login.** Está configurado a 5 intentos por ventana de 60 s por combinación de IP y
+usuario (bucket4j en memoria); solo los intentos fallidos consumen cupo y un login correcto lo libera. Con un
+usuario inexistente (el límite no afecta al `admin`):
+
+| Intento | Respuesta |
+|---|---|
+| 1 a 5 (usuario_prueba) | 401 |
+| 6 a 8 (usuario_prueba) | **429** (`ErrorResponse`: "Demasiados intentos de inicio de sesion…") |
+| Otro usuario desde la misma IP (otro_prueba) | 401, no bloqueado |
+| Tras 65 s (usuario_prueba) | 401, el cupo se renovó |
+
+El límite de `/confirm` por conductor (facturas distintas que se pueden intentar en poco tiempo) se verifica con
+pruebas unitarias (`ConfirmRateLimiterTest`); no se aísla en una prueba de carga porque cada factura solo se
+puede confirmar una vez.
+
+**Cache Aside de las líneas de factura** (Caffeine, TTL de 300 s, hasta 2 000 entradas). Se leyeron 20 facturas
+tres veces seguidas y se contó cuántas consultas llegaron a la tabla `delivery_invoice_line`:
+
+| Pasada | Tiempo por lectura (promedio / mediana) | Consultas a la tabla |
+|---|---:|---:|
+| 1 (caché vacía) | 9,9 ms / 8,5 ms | 20 (una por factura) |
+| 2 (caché caliente) | 6,6 ms / 6,6 ms | 0 |
+| 3 (caché caliente) | 6,3 ms / 6,2 ms | 0 |
+
+Repetido por separado: 40 lecturas con la caché caliente generaron **0 consultas** a la base de datos, y 20
+facturas nuevas, **20**. La diferencia de latencia es pequeña porque en local la base de datos está al lado; el
+efecto real es que las lecturas repetidas dejan de cargar la base de datos. Esta comprobación se hizo en local; el
+mismo script puede ejecutarse contra la EC2 (`BASE_URL`, `INSECURE_TLS=true`), donde no se ha ejecutado.
+
+### 3.8 Escalado y autoescalado (propuesta, no implementada)
+
+La API corre como **una sola instancia** (una EC2 con el backend y el nginx, más RDS), sin balanceador ni grupo
+de autoescalado, así que no hay política de autoescalado que evaluar en el spike. Lo que sí está medido es la
+capacidad de esa instancia: ~590 req/s sostenidos con la VM al ~51 % de CPU (150 VUs), un techo efectivo de
+~970 req/s, y la CPU de la VM como recurso que se agota en los picos (§3.5).
+
+Propuesta de escalado horizontal, a partir de esos datos (estimaciones, no medidas en un grupo de autoescalado):
+
+- **Regla de escala:** añadir una réplica cuando la CPU media de la VM supere el 70 % durante 3 min (con la carga
+  normal de 150 VUs está en ~51 % y en los picos llega al 100 %) y retirarla por debajo del 30 % durante 10 min;
+  mínimo de 2 réplicas para disponibilidad.
+- **Qué ya lo permite:** la sesión es una cookie JWT sin estado en el servidor, y la base de datos es un servicio
+  aparte (RDS).
+- **Qué habría que resolver antes**, porque hoy vive en la memoria de cada instancia: el rate limiting de
+  login y de `/confirm` (con N réplicas los límites se multiplican por N y habría que moverlos a un almacén
+  compartido), las claves de idempotencia, y las cachés de Caffeine (son de solo lectura sobre datos que no
+  cambian, así que tolerarían réplicas con TTL de 300 s). También hay que dimensionar las conexiones a la base de
+  datos: cada réplica abre su pool de 10, y la suma debe caber en el máximo de RDS.
+- **Alternativa inmediata:** escalar en vertical (más vCPU), que ataca directamente el recurso que se agota.
 
 ## 4. DevOps: despliegue en contenedores
 

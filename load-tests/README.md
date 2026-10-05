@@ -426,6 +426,23 @@ python3 load-tests/redact_results.py load-tests/production load-tests/results/pr
 `redact_results.py` copia los resúmenes a la carpeta versionada reemplazando el JWT de `setup_data`;
 no subas a git los de `results/` tal cual.
 
+## Comprobar caché y rate limiting
+
+Las pruebas de carga no pasan por la caché de líneas de factura ni por el limitador de login. Este script los
+comprueba con peticiones reales (rate limiting: 5 intentos fallidos por IP + usuario en 60 s → 429; caché:
+primera lectura frente a las siguientes y, si hay PostgreSQL en contenedor, cuántas consultas llegan a la tabla):
+
+```bash
+# local (reinicia el backend antes para que la caché arranque fría)
+BASE_URL=http://localhost:8080 ADMIN_PASSWORD=<...> POSTGRES_CONTAINER=<contenedor-postgres> \
+  load-tests/verificar_cache_ratelimit.sh
+# EC2 (sin contar consultas: RDS no es un contenedor)
+BASE_URL=https://<ip-ec2> INSECURE_TLS=true ADMIN_PASSWORD=<...> load-tests/verificar_cache_ratelimit.sh
+```
+
+Usa usuarios inventados para el rate limiting, así que no bloquea al admin; a esa IP le bloquea un minuto los
+intentos de esos usuarios. Resultado local en la Fase 4 (§3.7).
+
 ## Procedimiento de corridas en producción (EC2)
 
 Orden recomendado de las corridas contra la EC2.

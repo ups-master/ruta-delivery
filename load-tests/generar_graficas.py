@@ -2,8 +2,10 @@
 
 Uso (desde load-tests/):  python3 generar_graficas.py   (requiere matplotlib)
 Lee local/results-*.json y production/production-*.json (sustained, spike y
-breakpoint); escribe en production/graficas/ y comparativa/.
+breakpoint) y production/recursos-*.csv (salida de monitor.sh); escribe en
+production/graficas/ y comparativa/.
 """
+import csv
 import glob
 import json
 import os
@@ -96,6 +98,57 @@ if sp:
     guardar(fig, "production/graficas", "spike")
 else:
     plt.close(fig)
+
+# --- producción: recuperación tras el spike (spike.js con escenario "recovery") ---
+rec = []
+for f in sorted(glob.glob("production/production-spike-*.json")):
+    m = metrics(f)
+    if "http_req_duration{phase:recovery}" in m:
+        esc = re.search(r"spike-([\d.]+)-", f).group(1)
+        rec.append((esc, m["http_req_duration{phase:peak}"]["p(95)"], m["http_req_duration{phase:recovery}"]["p(95)"],
+                    m["http_req_failed{phase:peak}"]["value"] * 100, m["http_req_failed{phase:recovery}"]["value"] * 100))
+if rec:
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4))
+    x = range(len(rec))
+    for ax, i, titulo, fmt in [(axs[0], 1, "p95 (ms)", "{:.0f}"), (axs[1], 3, "Error (%)", "{:.1f}")]:
+        for k, (color, etiqueta, off) in enumerate([(NARANJA, "pico", 1), (AZUL, "recuperación", 2)]):
+            vals = [r[i + k] for r in rec]
+            b = ax.bar([j + (k - 0.5) * 0.35 for j in x], vals, width=0.35, color=color, label=etiqueta)
+            for r_, v in zip(b, vals):
+                ax.text(r_.get_x() + r_.get_width() / 2, v, fmt.format(v), ha="center", va="bottom", fontsize=8)
+        ax.set_xticks(list(x))
+        ax.set_xticklabels([f"LOAD_SCALE {r[0]}" for r in rec])
+        ax.set_title(titulo, fontweight="bold")
+        ax.legend()
+        ax.grid(axis="y", alpha=0.3)
+    fig.suptitle("Spike en producción: pico vs. fase de recuperación", fontweight="bold")
+    guardar(fig, "production/graficas", "recuperacion")
+
+# --- producción: CPU, memoria y TIME_WAIT durante cada corrida (monitor.sh) ---
+for f in sorted(glob.glob("production/recursos-*.csv")):
+    filas = list(csv.DictReader(open(f)))
+    if len(filas) < 2:
+        continue
+    t = [(i * 1.0) for i in range(len(filas))]
+    t0 = filas[0]["ts_utc"]
+    num = lambda c: [float(r[c]) if r.get(c) not in (None, "") else float("nan") for r in filas]
+    fig, axs = plt.subplots(3, 1, figsize=(10, 7), sharex=True)
+    for c, color, lab in [("host_cpu_pct", GRIS, "VM"), ("backend_cpu_pct", AZUL, "backend"), ("nginx_cpu_pct", NARANJA, "nginx")]:
+        axs[0].plot(t, num(c), color=color, label=lab)
+    axs[0].set_ylabel("CPU (%)"); axs[0].legend(loc="upper left")
+    axs[1].plot(t, num("backend_mem_mb"), color=AZUL, label="backend")
+    axs[1].plot(t, num("nginx_mem_mb"), color=NARANJA, label="nginx")
+    axs[1].axhline(1024, color="#c62828", ls="--", lw=1)
+    axs[1].text(0, 1024, "límite del backend (1 GB)", color="#c62828", fontsize=8, va="bottom")
+    axs[1].set_ylabel("Memoria (MB)"); axs[1].legend(loc="center left")
+    axs[2].plot(t, num("nginx_timewait"), color="#6a1b9a")
+    axs[2].set_ylabel("TIME_WAIT (nginx)")
+    axs[2].set_xlabel(f"muestras (desde {t0})")
+    for ax in axs:
+        ax.grid(alpha=0.3)
+    nombre = os.path.basename(f)[:-4]
+    fig.suptitle(f"Recursos durante la prueba: {nombre}", fontweight="bold")
+    guardar(fig, "production/graficas", nombre)
 
 # --- comparativa local vs producción (sustained) ---
 loc = row("local/results-sustained.json")

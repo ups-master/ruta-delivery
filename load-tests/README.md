@@ -120,7 +120,7 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 
 A diferencia de `sustained.js`/`spike.js` (que no se degradan ni con 750 VUs),
 `breakpoint.js` sube la tasa de llegada sin techo (`ramping-arrival-rate`, 500→10 000
-req/s objetivo) sobre la misma mezcla de endpoints, con `abortOnFail` en los umbrales de
+iteraciones/s objetivo; cada iteración hace 6 peticiones) sobre la misma mezcla de endpoints, con `abortOnFail` en los umbrales de
 error y de `p(95)<500ms`: en cuanto se cruza, k6 corta la prueba ahí mismo — ese es el
 breakpoint real, no un número elegido a mano.
 
@@ -133,6 +133,7 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 | Indicador | Resultado al momento del corte |
 |---|---:|
 | Throughput | 4 548,9 req/s |
+| Latencia promedio | 88,0 ms |
 | VUs activas | 1 311 (tope alcanzado en la etapa de 1500 iter/s) |
 | p90 | 380,2 ms |
 | **p95** | **601,4 ms (cruza el umbral de 500 ms)** |
@@ -175,10 +176,10 @@ que k6 cuenta como fallidas (código ≥ 400 o sin respuesta).
 
 | Corrida | VUs máx | Peticiones | req/s | Prom. | med | p90 | p95 | p99 | max | Errores |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| smoke | 2 | 109 | 3,5 | — | 113,8 ms | 128,2 ms | 129,6 ms | 141,5 ms | 200 ms | 0 % |
-| sustained 0.1 | 15 | 46 093 | 62,4 | — | 105,8 ms | 110,1 ms | 112,0 ms | 122,5 ms | 952 ms | 0 % |
-| sustained 0.2 | 30 | 92 605 | 125,2 | — | 98,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 20 485 ms | 0 % |
-| sustained 0.5 | 75 | 226 885 | 303,0 | — | 105,6 ms | 164,8 ms | **209,9 ms** | **346,6 ms** | 1 592 ms | 0 % |
+| smoke | 2 | 109 | 3,5 | 116,9 ms | 113,8 ms | 128,2 ms | 129,6 ms | 141,5 ms | 200 ms | 0 % |
+| sustained 0.1 | 15 | 46 093 | 62,4 | 109,7 ms | 105,8 ms | 110,1 ms | 112,0 ms | 122,5 ms | 952 ms | 0 % |
+| sustained 0.2 | 30 | 92 605 | 125,2 | 102,5 ms | 98,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 20 485 ms | 0 % |
+| sustained 0.5 | 75 | 226 885 | 303,0 | 126,3 ms | 105,6 ms | 164,8 ms | **209,9 ms** | **346,6 ms** | 1 592 ms | 0 % |
 | sustained 0.7 | 105 | 300 415 | 388,2 | 187,7 ms | 122,4 ms | 342,0 ms | **446,6 ms** | **707,5 ms** | 3 103 ms | **6,35 %** |
 | spike 0.2 | 150 | 58 397 | 450,2 | 197,0 ms | 116,9 ms | 407,9 ms | 506,7 ms | 680,8 ms | 2 658 ms | **14,64 %** |
 | spike 0.4 | 300 | 76 358 | 589,4 | 531,7 ms | 429,6 ms | 1 053,9 ms | 1 137,6 ms | 2 198,9 ms | 3 960 ms | **25,94 %** |
@@ -300,10 +301,78 @@ varias los límites se multiplicarían y las cachés dejarían de ser coherentes
 Estos resultados sirven como línea base de capacidad *por instancia* para dimensionar eso:
 ~300 req/s con p95 ≈ 210 ms y error 0 % en esta EC2; por encima de ~390 req/s empiezan los errores.
 
+## Medir recursos y analizar resultados
+
+El enunciado pide verificar la estabilidad de CPU, memoria y base de datos durante la carga
+sostenida. k6 solo mide el lado del cliente, así que los recursos se miden aparte, en tres capas.
+
+**1. Servidor de aplicación (EC2): `monitor.sh`.** Se ejecuta EN la EC2, antes de lanzar k6, y se
+detiene con Ctrl-C al terminar (deja ~1 min de margen a cada lado):
+
+```bash
+load-tests/monitor.sh stats-sostenida-1.0.csv      # intervalo por defecto: 5 s
+# ... en otra terminal: load-tests/run.sh sustained load-tests/env/production.env ...
+# Ctrl-C al terminar: imprime reinicios/OOMKilled del backend y el conteo de códigos HTTP del nginx
+```
+
+Escribe `ts_utc, host_cpu_pct, host_mem_used_mb, backend_cpu_pct, backend_mem_mb, nginx_cpu_pct,
+nginx_mem_mb, nginx_timewait`. `nginx_timewait` son los sockets en `TIME_WAIT` del contenedor del
+nginx: si se acerca a ~28 000 se agotan los puertos efímeros y aparecen 502 (`connect() failed (99:
+Address not available)`). Copia el CSV a `production/recursos-<escenario>-<escala>.csv`;
+`generar_graficas.py` dibuja CPU, memoria y `TIME_WAIT` en el tiempo.
+
+**2. Base de datos (RDS): CloudWatch**, misma ventana horaria (UTC) de la corrida. En la consola:
+RDS → la instancia → *Monitoring* → rango personalizado → capturas de `CPUUtilization`,
+`DatabaseConnections`, `FreeableMemory`, `ReadIOPS`/`WriteIOPS` y `ReadLatency`/`WriteLatency`. Por
+CLI, una llamada por métrica (guardar el JSON como `production/rds-<escenario>-<escala>.json`):
+
+```bash
+aws cloudwatch get-metric-statistics --namespace AWS/RDS --metric-name CPUUtilization \
+  --dimensions Name=DBInstanceIdentifier,Value=<id> \
+  --start-time 2026-10-05T01:50:00Z --end-time 2026-10-05T02:10:00Z \
+  --period 60 --statistics Average Maximum
+```
+
+`DatabaseConnections` se compara con `DB_POOL_MAX_SIZE` (10 por defecto): si se queda pegado a
+~10, el pool es el cuello; si es bajo, no.
+
+**3. Créditos de CPU de la EC2 (si es de la familia t).** En CloudWatch → EC2: `CPUUtilization`,
+`CPUCreditBalance` y `CPUSurplusCreditBalance`. Si el saldo llega a 0 durante la prueba, AWS limita
+la CPU y la degradación no es del código.
+
+**Códigos HTTP.** `sustained.js`, `spike.js` y `breakpoint.js` declaran umbrales de visibilidad
+(`statusThresholds()` en `config.js`) para que el resumen exportado traiga `http_reqs{status:N}`
+(status `0` = sin respuesta). Para corridas anteriores, el log del nginx da el mismo desglose:
+
+```bash
+docker logs --since <inicio-UTC> --until <fin-UTC> <nginx> 2>&1 \
+  | awk '/ HTTP\/1\.[01]" /{print $9}' | sort | uniq -c | sort -rn
+```
+
+**Spike.** Sube a su pico en 10 s, lo mantiene 1 min 30 s y baja en 5 s; después corre el escenario
+`recovery` (5 VUs fijos, 2 min). Los umbrales `http_req_*{phase:peak}` y `{phase:recovery}` dejan
+en el resumen el p95 y el error de cada fase: si la recuperación vuelve a ~0 % de error y a la
+latencia base, el sistema se recupera solo; si no, queda degradado. (Los resultados locales de
+arriba son de la versión anterior del script, con 30 s de subida y de bajada.)
+
+**Breakpoint.** `breakpoint.js` etiqueta cada petición con su escalón (`s1`…`s6`, 1 min cada uno)
+y `breakpoint_cut.py` imprime tasa objetivo, peticiones, error y p95 por escalón y señala el
+primero que supera el umbral. El corte por `abortOnFail` usa el error *acumulado* y llega tarde:
+el punto de ruptura real es ese escalón, no el instante del corte.
+
+```bash
+python3 load-tests/breakpoint_cut.py load-tests/results/production-breakpoint-0.05-<fecha>.json
+python3 load-tests/resumen_corrida.py load-tests/results/production-*.json   # filas para las tablas
+python3 load-tests/redact_results.py load-tests/production load-tests/results/production-*.json
+```
+
+`redact_results.py` copia los resúmenes a la carpeta versionada reemplazando el JWT de `setup_data`;
+no subas a git los de `results/` tal cual.
+
 ## Gráficas y carpetas
 
 - `local/` — resultados y gráficas del stack local (`local/graficas/`, `local/results-*.json`).
-- `production/` — resultados (JWT redactado) y gráficas de la EC2 (`production/graficas/`).
+- `production/` — resultados (JWT redactado), CSV de recursos (`recursos-*.csv`) y gráficas de la EC2 (`production/graficas/`).
 - `comparativa/` — local vs producción.
 - `generar_graficas.py` regenera `production/graficas/` y `comparativa/` (requiere matplotlib).
   Las de `local/graficas/` se generaron aparte (SVG→PNG) y no las regenera este script.

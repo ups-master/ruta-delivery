@@ -134,7 +134,7 @@ degradación progresiva.
 |---|---|---:|---:|---:|---:|---:|---:|
 | Sostenida | 0→150→0 (12 min) | 639,5 req/s | 2,36 ms | 4,33 ms | 5,32 ms | 7,05 ms | 0,00 % |
 | Spike | 0→750→0 (2 min) | 3 075,4 req/s | 2,42 ms | 4,39 ms | 5,54 ms | 12,19 ms | 0,00 % |
-| Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | — | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
+| Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | 88,0 ms | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
 
 **Códigos HTTP de error.** En los tres escenarios locales `http_req_failed` fue 0 %: no hubo
 ninguna respuesta 4xx ni 5xx (k6 cuenta como fallida toda respuesta ≥ 400). Cada
@@ -158,9 +158,9 @@ breakpoint). Resultados en `load-tests/production/`.
 
 | Escenario | VUs | Throughput | Promedio | p90 | p95 | p99 | Error |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Sostenida 0,1 | 15 | 62,4 req/s | — | 110,1 ms | 112,0 ms | 122,5 ms | 0,00 % |
-| Sostenida 0,2 | 30 | 125,2 req/s | — | 103,0 ms | 105,0 ms | 131,5 ms | 0,00 % |
-| Sostenida 0,5 | 75 | 303,0 req/s | — | 164,8 ms | 209,9 ms | 346,6 ms | 0,00 % |
+| Sostenida 0,1 | 15 | 62,4 req/s | 109,7 ms | 110,1 ms | 112,0 ms | 122,5 ms | 0,00 % |
+| Sostenida 0,2 | 30 | 125,2 req/s | 102,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 0,00 % |
+| Sostenida 0,5 | 75 | 303,0 req/s | 126,3 ms | 164,8 ms | 209,9 ms | 346,6 ms | 0,00 % |
 | Sostenida 0,7 | 105 | 388,2 req/s | 187,7 ms | 342,0 ms | 446,6 ms | 707,5 ms | 6,35 % |
 | Spike 0,2 | 150 | 450,2 req/s | 197,0 ms | 407,9 ms | 506,7 ms | 680,8 ms | 14,64 % |
 | Spike 0,4 | 300 | 589,4 req/s | 531,7 ms | 1 053,9 ms | 1 137,6 ms | 2 198,9 ms | 25,94 % |

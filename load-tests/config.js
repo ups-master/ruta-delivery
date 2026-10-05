@@ -43,6 +43,17 @@ export function p95Threshold(defaultMs) {
   return `p(95)<${positiveNumber('P95_MS', defaultMs)}`
 }
 
+// Umbrales "de visibilidad" (siempre se cumplen): k6 solo exporta en --summary-export los
+// submetricos que tienen umbral, asi que declararlos produce en el JSON el conteo de
+// peticiones por codigo HTTP (status 0 = sin respuesta: tiempo agotado o conexion cerrada).
+export function statusThresholds(codes = [200, 401, 403, 429, 500, 502, 503, 504, 0]) {
+  const thresholds = {}
+  codes.forEach((code) => {
+    thresholds[`http_reqs{status:${code}}`] = ['count>=0']
+  })
+  return thresholds
+}
+
 export function baseOptions(extra) {
   return Object.assign(
     {

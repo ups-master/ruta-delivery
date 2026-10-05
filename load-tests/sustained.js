@@ -7,7 +7,7 @@
 import http from 'k6/http'
 import { check, sleep } from 'k6'
 import { login } from './auth.js'
-import { BASE_URL, baseOptions, p95Threshold, scaled } from './config.js'
+import { BASE_URL, baseOptions, p95Threshold, scaled, statusThresholds } from './config.js'
 
 export const options = baseOptions({
   scenarios: {
@@ -24,6 +24,7 @@ export const options = baseOptions({
   thresholds: {
     http_req_duration: [p95Threshold(500)],
     http_req_failed: ['rate<0.01'],
+    ...statusThresholds(),
   },
 })
 

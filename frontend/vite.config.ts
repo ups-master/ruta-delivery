@@ -68,5 +68,15 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     css: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      // El punto de entrada, los tipos y los propios tests no son logica a cubrir.
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/main.tsx', 'src/vite-env.d.ts', 'src/types/**'],
+      reporter: ['text', 'json-summary'],
+      // Piso de cobertura: el CI falla si baja. Valores reales al fijarlo: 97 % instrucciones, 95 % ramas,
+      // 95 % funciones y 99 % lineas; el piso deja margen para cambios pequeños sin test inmediato.
+      thresholds: { statements: 90, branches: 90, functions: 90, lines: 90 },
+    },
   },
 })

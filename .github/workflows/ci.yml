@@ -95,9 +95,9 @@ jobs:
       - name: Install
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Test
+      - name: Test (con cobertura; falla por debajo del piso de vite.config.ts)
         working-directory: frontend
-        run: pnpm exec vitest run
+        run: pnpm run test:coverage
       - name: Build (incluye chequeo de tipos, "tsc -b && vite build")
         working-directory: frontend
         run: pnpm run build

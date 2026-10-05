@@ -90,11 +90,18 @@ cookie `access_token`, coherente con la implementación real.
 - **Backend:** 139 pruebas (`mvn test`, BUILD SUCCESS, ejecutadas en un contenedor Maven
   limpio con Testcontainers, incluidas pruebas de integración reales contra un PostgreSQL
   real — bloqueo de PIN, concurrencia con `SELECT ... FOR UPDATE`, caché real, escape de
-  comodines en la búsqueda). Cobertura JaCoCo: **~80 % de instrucciones**, ~58% de ramas.
+  comodines en la búsqueda). Cobertura JaCoCo: **81,1 % de instrucciones**, 59,9 % de ramas, 84,4 % de líneas y 82,7 % de métodos.
 - **Contrato:** una prueba de integración compara lo que publica la API (`/v3/api-docs`) con el
   contrato versionado `docs/openapi.json` y falla ante cualquier diferencia.
-- **Frontend:** 25 pruebas con Vitest + Testing Library (`apiClient`, interceptores de
-  sesión/401, páginas de administración).
+- **Frontend:** 215 pruebas con Vitest y Testing Library, con cobertura medida por V8
+  (`pnpm run test:coverage`): **97,5 % de instrucciones, 95,0 % de ramas, 94,7 % de funciones y 99,1 % de líneas**.
+  Cubren el cliente HTTP y sus interceptores de sesión (401), la autenticación y las rutas protegidas por rol, todas
+  las páginas del administrador (facturas con creación, publicación y exportación a CSV; entregas con la foto de
+  evidencia; equipo; panorama con el mapa, el costo y el Circuit Breaker) y las del conductor (búsqueda y escaneo de
+  la factura, verificación de productos, foto, PIN, aviso de distancia, confirmación con `Idempotency-Key`,
+  incidencias e historial). Las llamadas a la API, el GPS, la cámara, Tesseract y Leaflet se simulan; las pruebas
+  verifican el comportamiento (peticiones enviadas, mensajes y estados), y se comprobó que fallan si se altera la
+  lógica. El CI ejecuta la cobertura y **falla si baja del 90 %** (`frontend/vite.config.ts`).
 - El detalle por clase y por ronda de mejora está en `docs/EVALUACION_TECNICA.md` §8/§16.
 
 ## 3. Rendimiento: pruebas de carga y estrés
@@ -443,8 +450,8 @@ Propuesta de escalado horizontal, a partir de esos datos (estimaciones, no medid
 ## 5. Conclusión
 
 Los cuatro entregables técnicos de la Fase 4 están cubiertos con evidencia ejecutada: autenticación
-JWT con cookie `HttpOnly` y autorización por rol en el backend; 139 pruebas de backend con cobertura
-medida (~80 % de instrucciones) y una prueba que verifica el contrato OpenAPI; pruebas de carga con k6 en los
+JWT con cookie `HttpOnly` y autorización por rol en el backend; 139 pruebas de backend (81 % de
+instrucciones), 215 de frontend (97,5 %) y una prueba que verifica el contrato OpenAPI; pruebas de carga con k6 en los
 dos escenarios que pide el enunciado más un punto de ruptura; y un pipeline de CI/CD con el backend
 desplegado en AWS y un procedimiento de despliegue con rollback.
 

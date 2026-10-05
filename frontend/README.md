@@ -32,7 +32,8 @@ contenedor.
 ## Pruebas y lint
 
 ```bash
-pnpm exec vitest run
+pnpm test                  # vitest run (215 pruebas)
+pnpm run test:coverage     # con cobertura V8: 97,5 % de instrucciones; falla por debajo del 90 %
 pnpm run lint       # oxlint, entiende TypeScript/TSX nativamente
 pnpm run typecheck  # solo el chequeo de tipos, sin generar el build
 ```

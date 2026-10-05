@@ -1,0 +1,210 @@
+{
+  "metrics": {
+    "http_reqs{status:429}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "http_req_sending": {
+      "p(90)": 0.009978,
+      "p(95)": 0.012572,
+      "p(99)": 0.020759,
+      "avg": 0.006453890748276273,
+      "min": 0.001733,
+      "med": 0.005238,
+      "max": 0.838761
+    },
+    "http_reqs{status:403}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "http_reqs{status:502}": {
+      "rate": 0,
+      "count": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "http_req_tls_handshaking": {
+      "p(95)": 0,
+      "p(99)": 0,
+      "avg": 0.18075817936627653,
+      "min": 0,
+      "med": 0,
+      "max": 115.200473,
+      "p(90)": 0
+    },
+    "http_req_failed": {
+      "passes": 0,
+      "fails": 462757,
+      "thresholds": {
+        "rate<0.01": false
+      },
+      "value": 0
+    },
+    "http_req_waiting": {
+      "p(90)": 111.3729356,
+      "p(95)": 122.16704199999998,
+      "p(99)": 221.13736328000007,
+      "avg": 108.38907407168122,
+      "min": 85.74555,
+      "med": 96.296453,
+      "max": 3486.803725
+    },
+    "http_reqs{status:504}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "checks": {
+      "passes": 462756,
+      "fails": 0,
+      "value": 1
+    },
+    "iterations": {
+      "count": 77126,
+      "rate": 98.30228478883248
+    },
+    "http_reqs{status:503}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "http_req_duration": {
+      "avg": 108.43821017746714,
+      "min": 85.770397,
+      "med": 96.329289,
+      "max": 3486.841128,
+      "p(90)": 111.4042198,
+      "p(95)": 122.203043,
+      "p(99)": 221.21742952000005,
+      "thresholds": {
+        "p(95)<500": false
+      }
+    },
+    "http_reqs{status:401}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "http_req_receiving": {
+      "p(95)": 0.04830919999999995,
+      "p(99)": 0.08269344000000001,
+      "avg": 0.04268221504158805,
+      "min": 0.005786,
+      "med": 0.023734,
+      "max": 2897.225749,
+      "p(90)": 0.038443
+    },
+    "http_req_duration{expected_response:true}": {
+      "min": 85.770397,
+      "med": 96.329289,
+      "max": 3486.841128,
+      "p(90)": 111.4042198,
+      "p(95)": 122.203043,
+      "p(99)": 221.21742952000005,
+      "avg": 108.43821017746714
+    },
+    "http_req_connecting": {
+      "p(90)": 0,
+      "p(95)": 0,
+      "p(99)": 0,
+      "avg": 0.17933971344571764,
+      "min": 0,
+      "med": 0,
+      "max": 123.291133
+    },
+    "http_reqs": {
+      "count": 462757,
+      "rate": 589.8149833003883
+    },
+    "http_reqs{status:500}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "http_req_blocked": {
+      "max": 281.471637,
+      "p(90)": 0.003641,
+      "p(95)": 0.004475,
+      "p(99)": 0.04117572000000003,
+      "avg": 0.3652191326160184,
+      "min": 0.000318,
+      "med": 0.00161
+    },
+    "data_sent": {
+      "count": 190148442,
+      "rate": 242357.00409248236
+    },
+    "data_received": {
+      "count": 815817560,
+      "rate": 1039814.4609969456
+    },
+    "vus": {
+      "min": 0,
+      "max": 150,
+      "value": 2
+    },
+    "http_reqs{status:200}": {
+      "count": 462757,
+      "rate": 589.8149833003883,
+      "thresholds": {
+        "count>=0": false
+      }
+    },
+    "vus_max": {
+      "max": 150,
+      "value": 150,
+      "min": 150
+    },
+    "iteration_duration": {
+      "min": 1089.658039,
+      "med": 1100.4464515,
+      "max": 2238.336077,
+      "p(90)": 1121.378559,
+      "p(95)": 1137.6719765,
+      "p(99)": 1285.6762395,
+      "avg": 1109.257570568647
+    },
+    "http_reqs{status:0}": {
+      "count": 0,
+      "rate": 0,
+      "thresholds": {
+        "count>=0": false
+      }
+    }
+  },
+  "setup_data": {
+    "headers": {
+      "Cookie": "access_token=<redactado>"
+    }
+  },
+  "root_group": {
+    "checks": {
+      "status is 200": {
+        "name": "status is 200",
+        "path": "::status is 200",
+        "id": "6210a8cd14cd70477eba5c5e4cb3fb5f",
+        "passes": 462756,
+        "fails": 0
+      }
+    },
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": {}
+  }
+}

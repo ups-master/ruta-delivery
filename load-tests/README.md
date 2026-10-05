@@ -105,7 +105,7 @@ docker run --rm -i --network ruta-delivery-local_default -v "$PWD":/scripts \
 | Conexiones abiertas a la BD | 10 | 10 | Es el pool completo (`DB_POOL_MAX_SIZE=10`); vale lo mismo en reposo, así que no prueba por sí solo que el pool se agote |
 
 Medido con `load-tests/monitor.sh` cada 5 s sobre la meseta de 7 min (54 muestras); en esta corrida k6
-llama al backend directo, de modo que el nginx no está en la ruta (su CPU y sus `TIME_WAIT` son los del
+llama al backend directo, de modo que el nginx no está en la ruta (su CPU es la del
 reposo). Lectura: bajo 150 VUs el sistema es estable (error 0 %, memoria plana, sin reinicios) y el
 primer recurso en acercarse a su límite es la CPU del backend, no la memoria ni la base de datos.
 
@@ -188,101 +188,143 @@ de rendimiento). El número exacto de corte varía con la máquina donde se corr
 importante y estable es el orden de magnitud (varios miles de req/s) y que el sistema se
 degrada en latencia, nunca en errores.
 
-## Resultados en producción (2026-10-01 y 2026-10-04, EC2 directo, sin Cloudflare)
+## Resultados en producción (2026-10-05, EC2 directo, sin Cloudflare)
 
 Corridas de `run.sh` con `env/production.env`; el `LOAD_SCALE` va en el nombre del JSON de
-`results/`. `sustained` con `LOAD_SCALE=1` serían 150 VUs. Los errores son las respuestas
-que k6 cuenta como fallidas (código ≥ 400 o sin respuesta).
+`results/`. Con `LOAD_SCALE=1` la sostenida son 150 VUs y el spike 750. Los errores son las
+respuestas que k6 cuenta como fallidas (código ≥ 400 o sin respuesta: `status 0`).
 
-| Corrida | VUs máx | Peticiones | req/s | Prom. | med | p90 | p95 | p99 | max | Errores |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| smoke | 2 | 109 | 3,5 | 116,9 ms | 113,8 ms | 128,2 ms | 129,6 ms | 141,5 ms | 200 ms | 0 % |
-| sustained 0.1 | 15 | 46 093 | 62,4 | 109,7 ms | 105,8 ms | 110,1 ms | 112,0 ms | 122,5 ms | 952 ms | 0 % |
-| sustained 0.2 | 30 | 92 605 | 125,2 | 102,5 ms | 98,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 20 485 ms | 0 % |
-| sustained 0.5 | 75 | 226 885 | 303,0 | 126,3 ms | 105,6 ms | 164,8 ms | **209,9 ms** | **346,6 ms** | 1 592 ms | 0 % |
-| sustained 0.7 | 105 | 300 415 | 388,2 | 187,7 ms | 122,4 ms | 342,0 ms | **446,6 ms** | **707,5 ms** | 3 103 ms | **6,35 %** |
-| spike 0.2 | 150 | 58 397 | 450,2 | 197,0 ms | 116,9 ms | 407,9 ms | 506,7 ms | 680,8 ms | 2 658 ms | **14,64 %** |
-| spike 0.4 | 300 | 76 358 | 589,4 | 531,7 ms | 429,6 ms | 1 053,9 ms | 1 137,6 ms | 2 198,9 ms | 3 960 ms | **25,94 %** |
-| breakpoint 0.1 | 75 | 44 502 | 368,5 | 134,1 ms | 98,0 ms | 191,2 ms | 289,4 ms | 505,1 ms | 2 941 ms | **1,49 %** (corte) |
+| Corrida | VUs máx | Peticiones | req/s | Prom. | p90 | p95 | p99 | max | Errores |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| smoke 0.1 | 2 | 113 | 3,3 | 94,8 ms | 95,8 ms | 99,9 ms | 114,9 ms | 167 ms | 0 % |
+| **sustained 0.5** | 75 | 232 879 | 296,6 | 107,3 ms | 103,0 ms | **106,7 ms** | **130,3 ms** | 3 406 ms | **0 %** |
+| **sustained 1** | **150** | 462 757 | 589,8 | 108,4 ms | 111,4 ms | **122,2 ms** | **221,2 ms** | 3 487 ms | **0 %** |
+| spike 0.67 (pico) | 503 | 117 833 | ~1 122 | 501,1 ms | 887,1 ms | 1 115,9 ms | 1 742,5 ms | 4 413 ms | 0,79 % |
+| spike 1 (pico) | 750 | 129 452 | ~1 233 | 536,1 ms | 768,7 ms | 875,9 ms | 1 165,5 ms | 30 341 ms | 0,68 % |
+| spike 0.67 (recuperación) | 5 | 3 000 | ~25 | 105,0 ms | 102,7 ms | 104,3 ms | 124,8 ms | — | **0 %** |
+| spike 1 (recuperación) | 5 | 2 925 | ~24 | 109,7 ms | 104,6 ms | 105,3 ms | 125,5 ms | — | **0 %** |
+| breakpoint 0.05 | hasta 200 | 169 985 | 604,5 (media) | 153,2 ms | 216,8 ms | 530,2 ms | 906,2 ms | 4 002 ms | 0 % |
 
-Hasta 75 VUs (303 req/s) la EC2 responde sin errores. Con 105 VUs sostenidos el p95
-(446,6 ms) todavía queda bajo 500 ms, pero el error pasa de 1 % (6,35 %). JSON (con el JWT
-redactado) en `production/`; los originales de `results/` siguen ignorados por git.
+Códigos HTTP (conteo de k6): sostenida, todas las peticiones 200 (232 879 y 462 757); spike, 200
+y `status 0` (925 y 886, el 0,79 % y 0,68 % del pico) y ningún 5xx, ni 502 ni 503; breakpoint, todas
+200. `status 0` es una petición sin respuesta (conexión reiniciada o tiempo agotado a >500 VUs);
+el log del nginx no se ha revisado para esas corridas, así que la causa exacta queda sin confirmar.
+El smoke no desglosa códigos (`smoke.js` no declara los umbrales de visibilidad).
 
 ![Throughput en producción](production/graficas/throughput.png)
 ![p95 en producción](production/graficas/p95.png)
 ![p99 en producción](production/graficas/p99.png)
 ![Tasa de error en producción](production/graficas/error_rate.png)
+
+### Spike y recuperación en producción
+
 ![Spike en producción](production/graficas/spike.png)
+![Recuperación tras el spike](production/graficas/recuperacion.png)
 
-### Spike y breakpoint en producción
+- **Forma:** 0→pico en 10 s, 1 min 30 s de pico y bajada a 0 en 5 s; después, 2 min con 5 VUs
+  (`recovery`). Con `LOAD_SCALE=0.67` el pico son 503 VUs (6,7× los 75 VUs de la carga normal) y con
+  `1` son 750 (10×): ambos dentro del rango de 5–10× del enunciado.
+- **Durante el pico:** la instancia sigue respondiendo (1 122 y 1 233 req/s), pero la latencia sube
+  (p95 de 1 116 ms con 503 VUs y 876 ms con 750 VUs; el primero supera el umbral de 1 000 ms, el segundo
+  no) y se pierde el 0,7–0,8 % de las peticiones, por debajo del 1 %. Que el p95 de 750 VUs sea menor que
+  el de 503 VUs indica variabilidad entre corridas, no mejora con la carga. El máximo de 30,3 s de la
+  corrida de 750 VUs es una petición aislada.
+- **Recuperación:** en cuanto baja la carga el sistema vuelve solo a su estado normal: p95 de 104–105 ms
+  y 0,00 % de error en las dos corridas, la misma latencia que en la sostenida de 75 VUs. No hubo caídas
+  en cascada, y el backend no se reinició ni tuvo `OOMKilled`.
+- **Caché, rate limiting y autoescalado:** no se aíslan en esta prueba (solo hay lecturas del admin y
+  una única instancia, sin autoescalado).
 
-- **Spike (`spike.js`, 0→pico en 30 s, 1 min de meseta, bajada en 30 s).** Con `LOAD_SCALE=0.2`
-  (pico de 150 VUs) y `0.4` (300 VUs) el sistema no cae, pero pierde peticiones: 14,64 % y
-  25,94 % de error, y el p95 pasa de 507 ms a 1 138 ms (el segundo cruza el umbral de
-  1 000 ms). El throughput aun así sube (450 → 589 req/s). No son los 5-10× de la carga
-  normal que pide el enunciado: 300 VUs son 4× los 75 VUs que la instancia sostiene sin
-  errores, y el spike completo (750 VUs, `LOAD_SCALE=1`) no se corrió en producción.
-- **Los errores son 502 del nginx, no de la aplicación.** Los fallos del `check` (8 550 y
-  19 805) coinciden con las peticiones fallidas: ninguna fue un 503 del Circuit Breaker. El
-  log del nginx muestra `connect() to <backend>:8080 failed (99: Address not available)` y la
-  respuesta `502`: el nginx no consigue abrir la conexión hacia el backend por agotamiento de
-  puertos efímeros, porque abre una conexión nueva por petición (`proxy_pass` directo, sin
-  `keepalive` ni HTTP/1.1 hacia el backend). Los `499` del log son peticiones que k6 cerró al
-  cortar la prueba. Es una inferencia a partir del log y de la configuración. La corrección
-  (un `upstream` con `keepalive` y HTTP/1.1 hacia el backend) ya está en las plantillas de
-  `deploy/nginx/templates/`, pero **no se ha desplegado en la EC2 ni se repitieron las
-  corridas**: las cifras de esta sección corresponden a la configuración anterior.
-- **Breakpoint (`breakpoint.js` con `LOAD_SCALE=0.1`).** `ramping-arrival-rate` cuenta
-  *iteraciones* por segundo y cada iteración hace 6 peticiones, así que `0.1` arranca en 50
-  iteraciones/s (~300 req/s), ya en el nivel que la instancia sostiene. La corrida se cortó
-  sola (`abortOnFail`) a los ~2 min, con un error acumulado de 1,49 %; el p95 (289 ms) aún
-  no era el problema. Confirma la saturación, pero no fija el punto exacto: para eso haría
-  falta repetirlo con `LOAD_SCALE=0.03`-`0.05`.
-- **Recuperación tras el pico.** Estas corridas no miden el estado posterior (el resumen
-  agrega toda la prueba); el estado del Circuit Breaker se imprime en consola al terminar el
-  spike y no se guardó en los JSON.
+### Punto de ruptura (breakpoint) en producción
 
-### Comparativa local vs producción (sustained)
+`breakpoint.js` sube la tasa de llegada en 6 escalones de 1 min y etiqueta cada petición con su escalón.
+Con `LOAD_SCALE=0.05` los objetivos son 25→500 iteraciones/s (cada iteración son 6 peticiones, o sea
+150→3 000 req/s). `breakpoint_cut.py` resume por escalón:
+
+| Escalón | Objetivo (req/s) | Throughput efectivo | p95 | Error |
+|---|---:|---:|---:|---:|
+| s1 | 150 | 144 req/s | 103 ms | 0 % |
+| s2 | 150→450 | 257 req/s | 101 ms | 0 % |
+| s3 | 450→900 | 562 req/s | 101 ms | 0 % |
+| s4 | 900→1 500 | **967 req/s** | 108 ms | 0 % |
+| s5 | 1 500→2 400 | 904 req/s | **761 ms** | 0 % |
+
+![Breakpoint por escalón](production/graficas/breakpoint_escalones.png)
+
+**El punto de ruptura está entre 900 y 1 500 req/s de tasa objetivo, con un techo efectivo de ~970 req/s**
+(~160 iteraciones/s): hasta el escalón 4 el p95 es de ~100 ms; en el 5.º el throughput ya no crece (904 req/s,
+por debajo del anterior) y el p95 se dispara a 761 ms (×7), lo que cruza el umbral de 500 ms y corta la
+prueba (~4 min 41 s). **No hay errores HTTP: el sistema se degrada en latencia, no cae.** Resolución:
+un escalón (1 min). Cautela: en ese escalón se alcanzó el tope de 200 VUs del escenario (816 iteraciones
+descartadas), así que una parte del déficit entre objetivo y efectivo puede venir del generador; el salto del
+p95, en cambio, es del servidor.
+
+### Recursos durante las corridas (producción)
+
+| Corrida (ventana) | CPU de la VM (prom. / máx.) | CPU del backend, % de un núcleo (prom. / máx.) | Memoria del backend (prom.) | CPU del nginx (prom. / máx.) | `TIME_WAIT` del nginx (máx.) |
+|---|---:|---:|---:|---:|---:|
+| Reposo (previo a la tanda) | 3,3 % / 5,5 % | 0,9 % / 3,2 % | 787 MB | 0,2 % / 2,4 % | 8 |
+| Sostenida 75 VUs (meseta de 7 min) | 27,9 % / 30,7 % | 40,4 % / 47,0 % | 793 MB | 6,6 % / 10,1 % | 103 |
+| **Sostenida 150 VUs (meseta de 7 min)** | **50,6 % / 53,1 %** | 76,3 % / 96,9 % | 806 MB | 12,5 % / 15,9 % | 826 |
+| Spike 503 VUs (pico de 1 min 45 s) | 90,8 % / **100,0 %** | 126,2 % / 155,8 % | 811 MB | 47,5 % / 100,9 % | 17 385 |
+| Spike 750 VUs (pico de 1 min 45 s) | 88,1 % / 99,6 % | 135,4 % / 156,8 % | 804 MB | 33,3 % / 60,0 % | 10 647 |
+| Breakpoint (escalones de 1 min) | 39,3 % / 95,6 % | 57,9 % / 146,0 % | 793 MB | 10,3 % / 35,6 % | 619 |
+
+Medido con `load-tests/monitor.sh` cada 5 s en la EC2 durante toda la tanda (CSV en
+`load-tests/production/recursos-produccion.csv`; 415 muestras, de 03:45 a 04:34 UTC). Las ventanas se
+calculan con la hora de inicio de cada corrida de k6.
+
+![Recursos de la EC2 durante las corridas](production/graficas/recursos-produccion.png)
+
+- **Carga sostenida (150 VUs): margen amplio.** La CPU de la VM ronda el 51 % (máximo 53 %) y el backend usa
+  el 76 % de un núcleo; con 75 VUs, el 28 % y el 40 %. El sistema no está cerca de su límite con la carga
+  que exige el enunciado.
+- **El recurso que se agota es la CPU de la instancia.** En los dos picos del spike la CPU de la VM llega al
+  100 % (promedio de 88–91 %) y el backend a ~156 % de un núcleo (la instancia tiene al menos 2 vCPU); en el
+  breakpoint la VM llega al 95,6 % justo en el escalón en que el p95 se dispara. Es una correlación temporal,
+  no un experimento, pero coincide con la degradación de latencia (p95 de 876–1 116 ms en el pico) y con
+  el 0,7–0,8 % de peticiones sin respuesta.
+- **La memoria no limita.** El heap del backend se mantiene en 787–814 MB sobre el límite de 1 GB durante los
+  49 minutos (sin crecimiento, lo que descarta una fuga), y no hubo reinicios ni `OOMKilled`.
+- **Los sockets del nginx no se agotan.** Los `TIME_WAIT` suben hasta 17 385 en el pico del spike, por debajo
+  del rango de puertos efímeros (~28 000), y se mantienen en cientos con la carga sostenida.
+- **Base de datos (RDS): sin medir.** El monitor solo ve contenedores y RDS es un servicio aparte; su CPU y sus
+  conexiones se obtienen de CloudWatch y no se capturaron. Como referencia, el PostgreSQL local usó ~32 % de
+  CPU con los mismos 150 VUs (sección 3.1).
+
+### Comparativa local vs producción (sostenida, mismos 150 VUs)
 
 ![Local vs producción](comparativa/sustained_local_vs_produccion.png)
 
-| | Local (150 VUs) | Producción (105 VUs, 0.7) |
+| | Local (150 VUs) | Producción (150 VUs) |
 |---|---:|---:|
-| Throughput | 654,3 req/s | 388,2 req/s |
-| p95 | 7,0 ms | 446,6 ms |
-| p99 | 10,0 ms | 707,5 ms |
-| Errores | 0 % | 6,35 % |
+| Throughput | 654,3 req/s | 589,8 req/s |
+| p95 | 7,0 ms | 122,2 ms |
+| p99 | 10,0 ms | 221,2 ms |
+| Errores | 0 % | 0 % |
 
-La diferencia de p95/p99 es sobre todo RTT de red (~100 ms) más la cola que aparece en la
-EC2 desde 0.5; no es comparable 1 a 1 porque local corre en la red de Docker, en una
-máquina de desarrollo con CPU holgada. Lo comparable es la forma: el local no llega a
-degradarse con 750 VUs, y la EC2 empieza a perder peticiones entre 75 y 105 VUs.
+Con la misma carga y el mismo perfil de prueba, ambos cumplen los umbrales (error < 1 %, p95 < 500 ms).
+La latencia de producción es ~86–96 ms por petición frente a ~7 ms en local, y en el desglose de k6 es casi toda
+espera del primer byte (`http_req_waiting`); la conexión, el TLS y la transferencia suman menos de 1 ms. Mediciones
+puntuales con `curl` (de una en una, tiempo hasta el primer byte) dieron ~10 ms para todos los endpoints de la
+carga, tanto desde la shell de WSL como desde un contenedor Docker: la red virtual no añade latencia y los
+endpoints no son lentos por sí mismos. La causa de los ~86–96 ms de k6 no se determinó (hipótesis sin comprobar: el
+patrón de lotes de 6 peticiones en paralelo por VU, o el generador); las latencias de producción se reportan como las
+mide k6 y no equivalen al tiempo de una petición aislada.
 
 **Lectura:**
 
-- La latencia base es el RTT de red: el mínimo ronda 86-107 ms y el handshake ~105-110 ms.
-  Hasta 30 VUs el backend aporta pocos ms.
-- **La capacidad medida de esta instancia es ~300 req/s sin errores (75 VUs) y satura
-  entre 303 y 388 req/s.** Con 0.5 aparece la primera degradación (p95 105→210 ms, p99
-  131→347 ms, sin errores); con 0.7 el throughput deja de crecer linealmente (388 req/s
-  frente a ~424 esperados) y empiezan los errores (6,35 %). Las peticiones perdidas
-  son 502 del nginx al abrir la conexión hacia el backend (ver arriba); CPU de la EC2,
-  memoria del contenedor de 1 GB y pool Hikari/RDS **no están medidos**, así que no se sabe
-  cuál limitaría después.
-- A diferencia del local, aquí **sí hay errores**, no solo latencia: el sistema pasa de
-  degradarse con cola a rechazar o perder peticiones al superar su capacidad.
-- Hay outliers aislados (20,5 s en una petición de la corrida 0.2; bloqueos de conexión de
-  ~1,1 s por posibles retransmisiones de SYN).
-- Desde esta ronda `sustained.js`, `spike.js` y `breakpoint.js` agrupan las peticiones del
-  tablero con `tags: { name: ... }` (antes `from`/`to` creaban una serie de métricas por URL
-  y k6 avisaba de 200 mil series). El resumen exportado no incluye la latencia por endpoint
-  salvo que se declaren umbrales sobre esa etiqueta; sigue pendiente confirmar qué ruta
-  genera la cola.
-- Frente al enunciado: la sostenida llegó a 105 VUs en producción (rango 100-200), pero con
-  error de 6,35 % (se pide < 1 %); el spike llegó a 300 VUs (4×, no 5-10×); el breakpoint
-  se corrió y cortó, sin fijar el punto exacto. El perfil completo (150 VUs sostenidos,
-  750 en spike) corresponde a la ejecución local.
+- La latencia base de las corridas es de ~86 ms por petición (mínimo) y el p95 es de 122 ms con 150 VUs: hasta esa
+  carga la latencia casi no crece por encima de la base.
+- **Capacidad medida de la instancia:** ~590 req/s sostenidos (150 VUs) sin errores y p95 de 122 ms, con un
+  techo efectivo de ~970 req/s a partir del cual el p95 se degrada.
+- **Recursos:** ver la tabla de arriba: con 150 VUs la VM está a ~51 % de CPU y el backend a 806 MB de 1 GB;
+  la CPU de la instancia es lo que se agota en los picos. Sin reinicios ni `OOMKilled`. La base de datos RDS no se midió.
+- Hay outliers aislados (hasta 3,5 s en la sostenida y 30 s en un spike, de una petición entre cientos de
+  miles) sin errores asociados.
+- Desde esta ronda las peticiones del tablero llevan `tags: { name: ... }` y no hay aviso de cardinalidad
+  de métricas; el resumen exportado no separa la latencia por endpoint, así que no se puede atribuir la
+  cola del 5.º escalón a una ruta concreta.
 
 ### Cómo leer estos números: es un monolito, la carga no se distribuye
 
@@ -305,11 +347,12 @@ el código de negocio corre en un único proceso. No hay balanceador ni réplica
   no se puede atribuir la cola a una ruta concreta (ver pendientes).
 - **Por qué el local aguantó ~4 500 req/s y la EC2 menos.** Ambos son un solo nodo, pero el
   local es una máquina de desarrollo con CPU holgada y sin red de por medio; la EC2 es una
-  instancia mucho más pequeña con ~100 ms de RTT. La comparación mide *tamaño de nodo*, no
+  instancia mucho más pequeña, accedida por red. La comparación mide *tamaño de nodo*, no
   un cambio de arquitectura.
-- **El generador también es un solo punto.** k6 corre desde una única máquina y una única
-  ruta de red, así que parte de la cola y de los outliers de conexión puede venir del lado
-  del cliente y no del servidor.
+- **El generador también es un solo punto.** k6 corre como contenedor Docker sobre WSL2 en Windows, desde una
+  única máquina y una única ruta de red, así que parte de la cola y de los outliers de conexión puede venir
+  del lado del cliente y no del servidor. La red de Docker no añade latencia (comprobado con `curl`), pero el
+  origen de la latencia base de ~86–96 ms de k6 sigue sin determinarse.
 
 **Qué implica para escalar.** Con un monolito de una instancia, la salida inmediata es
 **vertical** (más vCPU/RAM, subir `DB_POOL_MAX_SIZE`; en la ronda local pasar el pool de 10
@@ -319,7 +362,7 @@ pero hay estado local por instancia que habría que revisar antes: la caché Caf
 limiting de bucket4j (login y `/confirm`) viven en memoria de cada réplica, así que con
 varias los límites se multiplicarían y las cachés dejarían de ser coherentes entre sí.
 Estos resultados sirven como línea base de capacidad *por instancia* para dimensionar eso:
-~300 req/s con p95 ≈ 210 ms y error 0 % en esta EC2; por encima de ~390 req/s empiezan los errores.
+~590 req/s sostenidos (150 VUs) con p95 ≈ 122 ms y error 0 % en esta EC2, y un techo efectivo de ~970 req/s.
 
 ## Medir recursos y analizar resultados
 
@@ -337,8 +380,7 @@ load-tests/monitor.sh stats-sostenida-1.0.csv      # intervalo por defecto: 5 s
 
 Escribe `ts_utc, host_cpu_pct, host_mem_used_mb, backend_cpu_pct, backend_mem_mb, nginx_cpu_pct,
 nginx_mem_mb, nginx_timewait`. `nginx_timewait` son los sockets en `TIME_WAIT` del contenedor del
-nginx: si se acerca a ~28 000 se agotan los puertos efímeros y aparecen 502 (`connect() failed (99:
-Address not available)`). Copia el CSV a `production/recursos-<escenario>-<escala>.csv`;
+nginx (indicador de presión sobre los puertos efímeros). Copia el CSV a `production/recursos-<escenario>-<escala>.csv`;
 `generar_graficas.py` dibuja CPU, memoria, `TIME_WAIT` y (si hay contenedor de PostgreSQL) la base de datos
 en el tiempo, y `resumen_recursos.py <csv> <desde_UTC> <hasta_UTC>` calcula promedio y máximo de la meseta
 (ventana: inicio de k6 + 3 min hasta + 10 min) listos para la tabla de la Fase 4.
@@ -390,21 +432,30 @@ python3 load-tests/redact_results.py load-tests/production load-tests/results/pr
 `redact_results.py` copia los resúmenes a la carpeta versionada reemplazando el JWT de `setup_data`;
 no subas a git los de `results/` tal cual.
 
-## Procedimiento de corridas en producción (EC2)
+## Comprobar caché y rate limiting
 
-Orden recomendado tras desplegar el `upstream` con `keepalive` del nginx (la plantilla se monta desde el
-checkout del repo en la VM, no va en la imagen; no hace falta reconstruir ni redesplegar el backend). Para que
-el cambio sea permanente la rama debe llegar a `main`: un despliegue posterior que haga checkout de un
-commit sin ella devolvería la plantilla anterior:
+Las pruebas de carga no pasan por la caché de líneas de factura ni por el limitador de login. Este script los
+comprueba con peticiones reales (rate limiting: 5 intentos fallidos por IP + usuario en 60 s → 429; caché:
+primera lectura frente a las siguientes y, si hay PostgreSQL en contenedor, cuántas consultas llegan a la tabla):
 
 ```bash
-# En la EC2: traer la rama y recrear SOLO el nginx. --force-recreate es necesario: la plantilla se
-# procesa al arrancar el contenedor, y un `up -d nginx` a secas no detecta que el archivo cambio.
-git fetch && git checkout <rama>
-docker compose -f deploy/docker-compose.yml --env-file deploy/env/production.env up -d --force-recreate nginx
-docker exec <nginx> sh -c 'grep -n "upstream\|keepalive" /etc/nginx/conf.d/default.conf'   # debe mostrar el upstream
-docker exec <nginx> nginx -t && curl -k https://<ip>/healthz
+# local (reinicia el backend antes para que la caché arranque fría)
+BASE_URL=http://localhost:8080 ADMIN_PASSWORD=<...> POSTGRES_CONTAINER=<contenedor-postgres> \
+  load-tests/verificar_cache_ratelimit.sh
+# EC2 (sin contar consultas: RDS no es un contenedor)
+BASE_URL=https://<ip-ec2> INSECURE_TLS=true ADMIN_PASSWORD=<...> load-tests/verificar_cache_ratelimit.sh
 ```
+
+Usa usuarios inventados para el rate limiting, así que no bloquea al admin; a esa IP le bloquea un minuto los
+intentos de esos usuarios. Resultados local y de producción en la Fase 4 (§3.7).
+
+Contra la EC2 desde fuera, donde la red añade ruido, la caché se mide con el tiempo hasta el primer byte
+(`%{time_starttransfer} - %{time_pretransfer}` de `curl`, una sola conexión para las 20 facturas) y se resta el de
+`/healthz` (que no toca la aplicación); ver §3.7 de la Fase 4.
+
+## Procedimiento de corridas en producción (EC2)
+
+Orden recomendado de las corridas contra la EC2.
 
 Cambia `LOAD_SCALE` en `load-tests/env/production.env` entre corridas (usa `ASSUME_YES=1`), deja 4-5 min
 entre una y otra y confirma antes de cada una que el backend no se reinició
@@ -413,17 +464,16 @@ durante cada corrida (ver arriba); la base de datos y los créditos de CPU, en C
 
 | # | Escenario | `LOAD_SCALE` | Qué demuestra | Criterio |
 |---|---|---|---|---|
-| 0 | smoke | 0.1 | El nginx nuevo responde bien | 0 % de error |
-| 1 | sustained | 0.5 (75 VUs) | Línea base y recursos en carga normal | 0 % de error, p95 ≈ 210 ms o mejor |
+| 0 | smoke | 0.1 | El entorno responde bien antes de cargarlo | 0 % de error |
+| 1 | sustained | 0.5 (75 VUs) | Línea base y recursos en carga normal | 0 % de error, p95 < 500 ms |
 | 2 | sustained | 1 (150 VUs) | Rango de 100-200 VUs con error < 1 % | error < 1 %, p95 < 500 ms |
 | 3 | spike | 0.67 (500 VUs, ~6,7× la carga normal de 75 VUs) | Pico abrupto y **fase de recuperación** | recovery: error ~0 % y p95 de vuelta a la línea base |
 | 4 | spike | 1 (750 VUs) — solo si el 3 fue estable | Extremo del rango 5-10× | se reporta lo que ocurra |
 | 5 | breakpoint | 0.05 (25→500 iteraciones/s ≈ 150→3 000 req/s) | Punto de ruptura por escalón | `breakpoint_cut.py` |
 
 Si la corrida 2 no baja del 1 % de error, reporta la de 0.7 (105 VUs, dentro del rango) y usa
-`monitor.sh` para ver qué recurso limita: CPU del backend o de la VM pegada al tope → cómputo;
-`TIME_WAIT` del nginx alto y 502 `Address not available` → el `keepalive` no aplicó; memoria del backend
-cerca de 1 GB u `OOMKilled` → subir `BACKEND_MEM_LIMIT`; créditos de CPU en 0 → límite de AWS.
+`monitor.sh` para ver qué recurso limita: CPU del backend o de la VM pegada al tope → cómputo; memoria del
+backend cerca de 1 GB u `OOMKilled` → subir `BACKEND_MEM_LIMIT`; créditos de CPU en 0 → límite de AWS.
 Después de cada corrida: `redact_results.py` → `production/`, `resumen_corrida.py` para las tablas y
 `generar_graficas.py` (requiere matplotlib) para las gráficas.
 

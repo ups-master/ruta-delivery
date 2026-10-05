@@ -13,7 +13,7 @@
 | **Fecha** | 26 de septiembre de 2026 |
 | **Estado** | Para revisión |
 
-> **Nota de trabajo.** Versión editable del Word de la Fase 2, alineada con `sistema-pruebas-entrega-1.5.dsl` y con la evaluación técnica vigente (`docs/EVALUACION_TECNICA.md`). El **Anexo A** lista los pocos puntos que aún conviene confirmar contra el código. Las figuras se generan desde el DSL y ya existen en la carpeta `figuras/` (ver Anexo A).
+> **Nota de trabajo.** Versión editable del Word de la Fase 2, alineada con `sistema-pruebas-entrega-1.5.dsl` y con la evaluación técnica vigente (`docs/EVALUACION_TECNICA.md`). El **Anexo A** registra las verificaciones hechas contra el código y su resultado. Las figuras se generan desde el DSL y ya existen en la carpeta `figuras/` (ver Anexo A).
 
 ---
 
@@ -269,7 +269,7 @@ Los patrones están respaldados por evidencia verificable: pruebas de integraci�
 
 ---
 
-## Anexo A. Puntos pendientes de confirmar contra el código
+## Anexo A. Verificación contra el código
 
 Esta ronda de validación contó los archivos de puertos y revisó el frontend contra el código actual. Los siete puntos que traía esta version ya estan confirmados y corregidos:
 

@@ -128,11 +128,24 @@ degradación progresiva.
 
 ### 3.4 Tabla resumen
 
-| Escenario | VUs / patrón | Throughput | p90 | p95 | p99 | Error |
-|---|---|---:|---:|---:|---:|---:|
-| Sostenida | 0→150→0 (12 min) | 639,5 req/s | 4,33 ms | 5,32 ms | 7,05 ms | 0,00 % |
-| Spike | 0→750→0 (2 min) | 3 075,4 req/s | 4,39 ms | 5,54 ms | 12,19 ms | 0,00 % |
-| Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
+| Escenario | VUs / patrón | Throughput | Promedio | p90 | p95 | p99 | Error |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Sostenida | 0→150→0 (12 min) | 639,5 req/s | 2,36 ms | 4,33 ms | 5,32 ms | 7,05 ms | 0,00 % |
+| Spike | 0→750→0 (2 min) | 3 075,4 req/s | 2,42 ms | 4,39 ms | 5,54 ms | 12,19 ms | 0,00 % |
+| Breakpoint (corte) | hasta 1 311 VUs | 4 548,9 req/s | — | 380,2 ms | 601,4 ms | 699,2 ms | 0,00 % |
+
+**Códigos HTTP de error.** En los tres escenarios locales `http_req_failed` fue 0 %: no hubo
+ninguna respuesta 4xx ni 5xx (k6 cuenta como fallida toda respuesta ≥ 400). Cada
+iteración verifica además que el estado sea `200` (en el spike se acepta también `503`, que
+es la respuesta esperada si el Circuit Breaker se abre, y no se produjo). En las corridas de
+producción (§3.5) la tasa de error también fue 0,00 %. Los JSON de k6 no desglosan las
+respuestas por código, por lo que no hay tabla por código; con 0 % de fallos, todas las
+respuestas fueron 2xx.
+
+**Sobre la rampa del spike.** El enunciado pide subir "de inmediato"; la prueba sube a 750
+VUs en 30 s (25 VUs nuevos por segundo), una subida abrupta frente a la rampa de 3 min de
+la carga sostenida. No es un salto instantáneo: es una desviación menor que conviene
+declarar en la defensa.
 
 ### 3.5 Producción (EC2) y comparativa con local
 

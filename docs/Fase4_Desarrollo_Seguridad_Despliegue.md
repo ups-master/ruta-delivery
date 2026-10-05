@@ -231,19 +231,30 @@ El detalle completo, con las gráficas y los JSON crudos, vive en `load-tests/RE
 - **Frontend en producción real:** Cloudflare Pages sirve la PWA desde su integración
   nativa de Git (build y despliegue por rama, *preview* automático por PR), verificado con
   `curl -I` contra el dominio real (200, con la CSP correcta en la respuesta).
-- **Pendiente real, no de alcance:** el job `deploy-backend` de `cd.yml` corre en verde
-  pero es un *no-op*: faltan las variables del Environment de GitHub
-  (`AWS_REGION`/`AWS_DEPLOY_ROLE_ARN`/`EC2_INSTANCE_ID`) para que
-  `deploy/scripts/setup-aws-oidc.sh` y `deploy/scripts/deploy.sh` se ejecuten contra una
-  instancia EC2 real. El dominio de la API en producción no resuelve por DNS todavía. Es
-  un trabajo de infraestructura concreto y acotado, no una carencia de diseño.
+- **Backend en producción (AWS):** el backend corre en una instancia EC2 con Docker Compose
+  y la base de datos en Amazon RDS for PostgreSQL. Delante va un nginx de borde que termina
+  TLS (origen de Cloudflare en modo *Full strict*), reenvía `/api/` al contenedor del
+  backend con conexiones persistentes (`upstream` con `keepalive`), protege Swagger UI con
+  Basic Auth, aplica una CSP por ruta y expone `/healthz`. El dominio de la API resuelve a
+  través de Cloudflare, y las pruebas de carga de §3.5 se ejecutaron contra esta instancia.
+- **Despliegue y rollback:** `deploy/scripts/deploy.sh <entorno> [tag]` descarga la imagen
+  versionada, hace respaldo previo, levanta el servicio esperando los *healthchecks*,
+  verifica por el nginx y, si algo falla, vuelve solo a la última imagen buena. El mismo
+  script lo invoca el job `deploy-backend` de `cd.yml` (OIDC de AWS + SSM Run Command, sin
+  SSH) cuando el Environment de GitHub define `AWS_REGION`, `AWS_DEPLOY_ROLE_ARN` y
+  `EC2_INSTANCE_ID`; sin esas variables el job termina con una anotación de despliegue
+  omitido y el despliegue se hace ejecutando el script en la instancia. El rollback vuelve a
+  la imagen anterior, no al esquema (Flyway solo avanza), por lo que las migraciones siguen
+  el patrón *expand/contract*.
 
 ## 5. Conclusión
 
-Los cuatro entregables técnicos de la Fase 4 están cubiertos con evidencia verificable y
-ejecutada, no solo declarada: autenticación JWT con cookie `HttpOnly` y autorización por
-rol en el backend; una suite de pruebas real y con cobertura medida; dos escenarios de
-carga que cumplen los parámetros mínimos del enunciado más un tercero que identifica el
-punto de ruptura exacto; y un pipeline de CI/CD que efectivamente construye, prueba y
-publica versiones reales. El único punto abierto — el despliegue del backend en AWS — es
-un trabajo de infraestructura pendiente y ya documentado, no una omisión técnica.
+Los cuatro entregables técnicos de la Fase 4 están cubiertos con evidencia ejecutada:
+autenticación JWT con cookie `HttpOnly` y autorización por rol en el backend; una suite de
+139 pruebas con cobertura medida y una prueba que verifica el contrato OpenAPI; pruebas de
+carga con los dos escenarios que pide el enunciado más un punto de ruptura, que cumplen
+todos los umbrales en el entorno local y que en producción miden la capacidad de una sola
+instancia (~300 req/s sin errores) y localizan su primer límite en la conexión del nginx
+hacia el backend, con una corrección ya preparada en las plantillas de despliegue; y un
+pipeline de CI/CD que construye, prueba y publica versiones, con el backend desplegado en
+AWS y un procedimiento de despliegue con rollback.

@@ -12,6 +12,7 @@ import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.DriverResponse;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.PageResponse;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.dto.UpdateDriverRequest;
 import com.ruta.deliverypin.infrastructure.adapter.in.web.security.CurrentDriverResolver;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -65,7 +66,7 @@ public class AdminDriverController {
             // (AdminInvoiceController, DriverDeliveryController.history), una inconsistencia
             // de contrato sin justificacion de negocio. El maximo sigue en 100.
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") @Schema(type = "integer", format = "int32", defaultValue = "20", maximum = "100", description = "Tamano de pagina (maximo 100).") int size
     ) {
         var result = listDriversUseCase.listAll(new PageRequest(page, size));
         return PageResponse.from(result, DriverResponse::from);

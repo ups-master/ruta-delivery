@@ -1,5 +1,6 @@
 package com.ruta.deliverypin.infrastructure.adapter.in.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.ruta.deliverypin.domain.model.Invoice;
 
 public record InvoiceResponse(
@@ -8,7 +9,7 @@ public record InvoiceResponse(
         String partnerName,
         String deliveryAddress,
         String invoiceDate,
-        String state,
+        @Schema(allowableValues = {"draft", "posted", "cancel"}) String state,
         Double expectedLatitude,
         Double expectedLongitude
 ) {

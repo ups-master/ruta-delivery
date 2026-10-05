@@ -34,8 +34,8 @@ Sin Maven instalado localmente, usar el contenedor oficial (asi corre CI):
 
 ```bash
 # Suite completa, incluye Testcontainers (requiere Docker; monta el socket)
-docker run --rm -v "$PWD/backend":/app -v maven-repo-cache:/root/.m2 \
-  -v /var/run/docker.sock:/var/run/docker.sock -w /app \
+docker run --rm -v "$PWD":/repo -v maven-repo-cache:/root/.m2 \
+  -v /var/run/docker.sock:/var/run/docker.sock -w /repo/backend \
   maven:3.9-eclipse-temurin-17 mvn test
 
 # Sin Docker disponible para Testcontainers: excluye solo las *IntegrationTest
@@ -50,7 +50,7 @@ mvn -DskipTests compile
 
 Cobertura JaCoCo: `backend/target/site/jacoco/index.html`. Testcontainers cubre
 `LocalInvoiceAdapterIntegrationTest`, `OperationalCostInputAdapterIntegrationTest`,
-`InvoiceFixtureLoaderIntegrationTest` y `CsrfCookieSurvivesAcrossRequestsIntegrationTest`
+`InvoiceFixtureLoaderIntegrationTest`, `OpenApiContractIntegrationTest` y `CsrfCookieSurvivesAcrossRequestsIntegrationTest`
 (esta ultima necesita Tomcat real con `@SpringBootTest(webEnvironment = RANDOM_PORT)`,
 no `MockHttpServletRequest`, para reproducir bugs de cookies/CSRF).
 
@@ -125,6 +125,10 @@ propia estrategia por defecto si no se le pasa ahi, y la AGREGA (no reemplaza) a
 peticion autenticada, no solo en el login. Bug real, encontrado con logging DEBUG contra
 Tomcat real y confirmado leyendo el bytecode de Spring Security — no es un detalle menor
 si se toca este archivo.
+
+**Contrato**: `docs/openapi.json` es la fuente de verdad (contract-first); un cambio de API
+empieza editandolo, y `OpenApiContractIntegrationTest` falla si `/v3/api-docs` difiere. El
+montaje del repo completo en el comando de tests es necesario porque el test lee `../docs`.
 
 **Migraciones**: Flyway (`backend/src/main/resources/db/migration/V*.sql`) es la unica
 fuente de verdad del esquema — nunca `ddl-auto=update`. Forward-only: un rollback de

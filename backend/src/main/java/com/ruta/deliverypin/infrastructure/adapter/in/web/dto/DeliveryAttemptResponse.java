@@ -1,5 +1,6 @@
 package com.ruta.deliverypin.infrastructure.adapter.in.web.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.ruta.deliverypin.domain.model.DeliveryAttemptSummary;
 
 import java.time.Instant;
@@ -11,7 +12,7 @@ public record DeliveryAttemptResponse(
         String partnerName,
         String deliveryAddress,
         String driverName,
-        String outcome,
+        @Schema(allowableValues = {"CONFIRMED", "REJECTED", "INCIDENT"}) String outcome,
         Double latitude,
         Double longitude,
         String detail,

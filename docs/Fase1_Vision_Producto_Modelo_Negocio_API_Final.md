@@ -21,6 +21,7 @@
 2. [Problema y oportunidad](#2-problema-y-oportunidad)
 3. [Solución y alcance](#3-solución-y-alcance)
    - [3.1 Principios estratégicos](#31-principios-estratégicos)
+   - [3.2 Anatomía y naturaleza de la API](#32-anatomía-y-naturaleza-de-la-api)
 4. [Justificación económica y captura de valor](#4-justificación-económica-y-captura-de-valor)
    - [4.1 Impacto económico](#41-impacto-económico)
    - [4.2 El costo de marca](#42-el-costo-de-marca)
@@ -78,6 +79,26 @@ La API genera y valida el PIN, contrasta fotografía y geolocalización y custod
 - **No intervención del ERP.** La API intercambia únicamente la información necesaria mediante mecanismos autorizados.
 - **Contrato mínimo de datos.** Se limita al comprobante, destinatario, dirección, contacto e ítems.
 - **Aislamiento del dominio.** La verificación permanece separada de inventario, facturación, contabilidad y gestión comercial.
+
+### 3.2 Anatomía y naturaleza de la API
+
+**Naturaleza.** Es una API REST **privada (interna)**: no se publica a terceros ni se
+comercializa. La consumen dos clientes propios, la PWA del conductor y el panel
+administrativo, y se apoya en un ERP simulado que representa al sistema vigente de la
+empresa. Es una API de **proceso** (ejecuta acciones de negocio como confirmar una entrega)
+y de **datos** (expone facturas, historial y métricas).
+
+**Anatomía de una petición.** Tomando como ejemplo la confirmación de una entrega:
+
+| Elemento | En esta API |
+|---|---|
+| **URI y versión** | `/api/v1/driver/deliveries/confirm`; el primer segmento fija la versión y el segundo, el rol que la consume |
+| **Verbo** | `POST`: ejecuta una acción que cambia el estado |
+| **Autenticación** | Cookie `access_token` (JWT, `HttpOnly`) obtenida en `POST /api/v1/auth/login` |
+| **Cabeceras propias** | `X-XSRF-TOKEN` (protección CSRF) e `Idempotency-Key` (reintentos seguros) |
+| **Cuerpo (JSON)** | `invoiceId`, `pin`, `latitude`, `longitude`, `photoBase64` |
+| **Respuesta correcta** | `200` con `{ "success": true, "message": "...", "photoUploaded": true }` |
+| **Respuesta de error** | Una sola forma, `{ "message", "path", "timestamp" }`, con el código HTTP que corresponde: 400, 409, 422, 429 o 503 |
 
 ## 4. Justificación económica y captura de valor
 

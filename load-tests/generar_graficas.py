@@ -1,8 +1,8 @@
 """Genera las gráficas de producción y la comparativa local vs producción.
 
 Uso (desde load-tests/):  python3 generar_graficas.py   (requiere matplotlib)
-Lee local/results-*.json y production/production-*.json; escribe en
-production/graficas/ y comparativa/.
+Lee local/results-*.json y production/production-*.json (sustained, spike y
+breakpoint); escribe en production/graficas/ y comparativa/.
 """
 import glob
 import json
@@ -70,6 +70,33 @@ for nombre, clave, fmt, titulo, color in [
         ax.text(len(escalas) - 0.5, 500, "umbral 500 ms", color="#c62828", ha="right", va="bottom", fontsize=8)
     guardar(fig, "production/graficas", nombre)
 
+# --- producción: spike, breakpoint y tasa de error de todas las corridas ---
+extra = {}
+for tipo in ("spike", "breakpoint"):
+    for f in sorted(glob.glob(f"production/production-{tipo}-*.json")):
+        extra[(tipo, re.search(rf"{tipo}-([\d.]+)-", f).group(1))] = row(f)
+
+corridas = [(f"sustained\n{e}\n({prod[e]['vus']} VUs)", prod[e]) for e in escalas]
+corridas += [(f"{t}\n{e}\n({r['vus']} VUs)", r) for (t, e), r in sorted(extra.items(), key=lambda kv: (kv[0][0], float(kv[0][1])))]
+
+fig, ax = plt.subplots(figsize=(10, 4))
+barras(ax, [c[0] for c in corridas], [c[1]["err"] for c in corridas], "#c62828", "{:.2f} %", "Tasa de error en producción (todas las corridas)")
+ax.axhline(1, color=GRIS, ls="--", lw=1)
+ax.text(len(corridas) - 0.5, 1, "umbral 1 %", color=GRIS, ha="right", va="bottom", fontsize=8)
+ax.set_ylabel("% de peticiones fallidas")
+guardar(fig, "production/graficas", "error_rate")
+
+fig, axs = plt.subplots(1, 3, figsize=(12, 4))
+sp = [(f"{e}\n({r['vus']} VUs)", r) for (t, e), r in sorted(extra.items(), key=lambda kv: float(kv[0][1])) if t == "spike"]
+if sp:
+    for ax, (clave, fmt, titulo) in zip(axs, [("rps", "{:.0f}", "Throughput (req/s)"), ("p95", "{:.0f}", "p95 (ms)"), ("err", "{:.1f} %", "Error")]):
+        barras(ax, [c[0] for c in sp], [c[1][clave] for c in sp], AZUL if clave == "rps" else NARANJA, fmt, titulo)
+    axs[1].axhline(1000, color="#c62828", ls="--", lw=1)
+    fig.suptitle("Spike en producción por LOAD_SCALE (umbral p95: 1000 ms)", fontweight="bold")
+    guardar(fig, "production/graficas", "spike")
+else:
+    plt.close(fig)
+
 # --- comparativa local vs producción (sustained) ---
 loc = row("local/results-sustained.json")
 ref = prod[escalas[-1]]
@@ -85,4 +112,4 @@ for ax, (clave, fmt, titulo) in zip(axs, [
     bs[1].set_color(NARANJA)
 fig.suptitle(f"Sustained: local (150 VUs) vs producción (LOAD_SCALE {escalas[-1]})", fontweight="bold")
 guardar(fig, "comparativa", "sustained_local_vs_produccion")
-print("OK", escalas)
+print("OK", escalas, sorted(extra))

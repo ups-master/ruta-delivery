@@ -167,56 +167,96 @@ de rendimiento). El número exacto de corte varía con la máquina donde se corr
 importante y estable es el orden de magnitud (varios miles de req/s) y que el sistema se
 degrada en latencia, nunca en errores.
 
-## Resultados en producción (2026-10-01, EC2 directo, sin Cloudflare)
+## Resultados en producción (2026-10-01 y 2026-10-04, EC2 directo, sin Cloudflare)
 
 Corridas de `run.sh` con `env/production.env`; el `LOAD_SCALE` va en el nombre del JSON de
-`results/`. `sustained` con `LOAD_SCALE=1` serían 150 VUs.
+`results/`. `sustained` con `LOAD_SCALE=1` serían 150 VUs. Los errores son las respuestas
+que k6 cuenta como fallidas (código ≥ 400 o sin respuesta).
 
-| Corrida | VUs máx | Peticiones | req/s | med | p90 | p95 | p99 | max | Errores |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| smoke | 2 | 109 | 3,5 | 113,8 ms | 128,2 ms | 129,6 ms | 141,5 ms | 200 ms | 0 % |
-| sustained 0.1 | 15 | 46 093 | 62,4 | 105,8 ms | 110,1 ms | 112,0 ms | 122,5 ms | 952 ms | 0 % |
-| sustained 0.2 | 30 | 92 605 | 125,2 | 98,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 20 485 ms | 0 % |
-| sustained 0.5 | 75 | 226 885 | 303,0 | 105,6 ms | 164,8 ms | **209,9 ms** | **346,6 ms** | 1 592 ms | 0 % |
+| Corrida | VUs máx | Peticiones | req/s | Prom. | med | p90 | p95 | p99 | max | Errores |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| smoke | 2 | 109 | 3,5 | — | 113,8 ms | 128,2 ms | 129,6 ms | 141,5 ms | 200 ms | 0 % |
+| sustained 0.1 | 15 | 46 093 | 62,4 | — | 105,8 ms | 110,1 ms | 112,0 ms | 122,5 ms | 952 ms | 0 % |
+| sustained 0.2 | 30 | 92 605 | 125,2 | — | 98,5 ms | 103,0 ms | 105,0 ms | 131,5 ms | 20 485 ms | 0 % |
+| sustained 0.5 | 75 | 226 885 | 303,0 | — | 105,6 ms | 164,8 ms | **209,9 ms** | **346,6 ms** | 1 592 ms | 0 % |
+| sustained 0.7 | 105 | 300 415 | 388,2 | 187,7 ms | 122,4 ms | 342,0 ms | **446,6 ms** | **707,5 ms** | 3 103 ms | **6,35 %** |
+| spike 0.2 | 150 | 58 397 | 450,2 | 197,0 ms | 116,9 ms | 407,9 ms | 506,7 ms | 680,8 ms | 2 658 ms | **14,64 %** |
+| spike 0.4 | 300 | 76 358 | 589,4 | 531,7 ms | 429,6 ms | 1 053,9 ms | 1 137,6 ms | 2 198,9 ms | 3 960 ms | **25,94 %** |
+| breakpoint 0.1 | 75 | 44 502 | 368,5 | 134,1 ms | 98,0 ms | 191,2 ms | 289,4 ms | 505,1 ms | 2 941 ms | **1,49 %** (corte) |
 
-Todas cumplen `p(95)<500 ms` y error `<1 %`. JSON (con el JWT redactado) en `production/`;
-los originales de `results/` siguen ignorados por git.
+Hasta 75 VUs (303 req/s) la EC2 responde sin errores. Con 105 VUs sostenidos el p95
+(446,6 ms) todavía queda bajo 500 ms, pero el error pasa de 1 % (6,35 %). JSON (con el JWT
+redactado) en `production/`; los originales de `results/` siguen ignorados por git.
 
 ![Throughput en producción](production/graficas/throughput.png)
 ![p95 en producción](production/graficas/p95.png)
 ![p99 en producción](production/graficas/p99.png)
+![Tasa de error en producción](production/graficas/error_rate.png)
+![Spike en producción](production/graficas/spike.png)
+
+### Spike y breakpoint en producción
+
+- **Spike (`spike.js`, 0→pico en 30 s, 1 min de meseta, bajada en 30 s).** Con `LOAD_SCALE=0.2`
+  (pico de 150 VUs) y `0.4` (300 VUs) el sistema no cae, pero pierde peticiones: 14,64 % y
+  25,94 % de error, y el p95 pasa de 507 ms a 1 138 ms (el segundo cruza el umbral de
+  1 000 ms). El throughput aun así sube (450 → 589 req/s). No son los 5-10× de la carga
+  normal que pide el enunciado: 300 VUs son 4× los 75 VUs que la instancia sostiene sin
+  errores, y el spike completo (750 VUs, `LOAD_SCALE=1`) no se corrió en producción.
+- **Los errores del spike no son 503.** El `check` de `spike.js` acepta 200 o 503, y sus
+  fallos (8 550 y 19 805) coinciden exactamente con las peticiones fallidas: ninguna fue un
+  503 del Circuit Breaker abierto. Qué respuesta fue (502/504 del nginx, tiempo agotado,
+  conexión rechazada u otra) **por determinar**: el resumen de k6 no desglosa por código; se
+  confirma con el log de acceso del nginx de la EC2 en la ventana de cada corrida.
+- **Breakpoint (`breakpoint.js` con `LOAD_SCALE=0.1`).** `ramping-arrival-rate` cuenta
+  *iteraciones* por segundo y cada iteración hace 6 peticiones, así que `0.1` arranca en 50
+  iteraciones/s (~300 req/s), ya en el nivel que la instancia sostiene. La corrida se cortó
+  sola (`abortOnFail`) a los ~2 min, con un error acumulado de 1,49 %; el p95 (289 ms) aún
+  no era el problema. Confirma la saturación, pero no fija el punto exacto: para eso haría
+  falta repetirlo con `LOAD_SCALE=0.03`-`0.05`.
+- **Recuperación tras el pico.** Estas corridas no miden el estado posterior (el resumen
+  agrega toda la prueba); el estado del Circuit Breaker se imprime en consola al terminar el
+  spike y no se guardó en los JSON.
 
 ### Comparativa local vs producción (sustained)
 
 ![Local vs producción](comparativa/sustained_local_vs_produccion.png)
 
-| | Local (150 VUs) | Producción (75 VUs, 0.5) |
+| | Local (150 VUs) | Producción (105 VUs, 0.7) |
 |---|---:|---:|
-| Throughput | 639,5 req/s | 303,0 req/s |
-| p95 | 5,3 ms | 209,9 ms |
-| p99 | 7,1 ms | 346,6 ms |
-| Errores | 0 % | 0 % |
+| Throughput | 639,5 req/s | 388,2 req/s |
+| p95 | 5,3 ms | 446,6 ms |
+| p99 | 7,1 ms | 707,5 ms |
+| Errores | 0 % | 6,35 % |
 
-La diferencia de p95/p99 (~40×) es sobre todo RTT de red (~100 ms) más la cola que aparece
-en la EC2 a partir de 0.5; no es comparable 1 a 1 porque local corre en la red de Docker y con
-el doble de VUs. Lo comparable es la forma: ambos sin errores, degradándose solo en latencia.
+La diferencia de p95/p99 es sobre todo RTT de red (~100 ms) más la cola que aparece en la
+EC2 desde 0.5; no es comparable 1 a 1 porque local corre en la red de Docker, en una
+máquina de desarrollo con CPU holgada. Lo comparable es la forma: el local no llega a
+degradarse con 750 VUs, y la EC2 empieza a perder peticiones entre 75 y 105 VUs.
 
 **Lectura:**
 
 - La latencia base es el RTT de red: el mínimo ronda 86-107 ms y el handshake ~105-110 ms.
   Hasta 30 VUs el backend aporta pocos ms.
-- Con 0.5 aparece la primera degradación. El throughput sigue casi lineal (303 req/s) y la
-  mediana no cambia, pero el p95 se duplica (105→210 ms) y el p99 sube 2,6× (131→347 ms).
-  Una parte de las peticiones hace cola en el servidor (CPU de la EC2, pool Hikari/RDS o
-  créditos de instancia); falta confirmarlo con CloudWatch.
-- Con `LOAD_SCALE=1` (~600 req/s) es probable que el p95 se acerque a 500 ms. El breakpoint
-  de esta EC2 queda entre 0.5 y 1.0, muy por debajo de los ~4 500 req/s del stack local.
+- **La capacidad medida de esta instancia es ~300 req/s sin errores (75 VUs) y satura
+  entre 303 y 388 req/s.** Con 0.5 aparece la primera degradación (p95 105→210 ms, p99
+  131→347 ms, sin errores); con 0.7 el throughput deja de crecer linealmente (388 req/s
+  frente a ~424 esperados) y empiezan los errores (6,35 %). Una parte de las peticiones
+  hace cola o se pierde en el servidor; qué recurso limita (CPU de la EC2, memoria del
+  contenedor de 1 GB, pool Hikari/RDS o créditos de instancia) **no está medido**: no hay
+  CPU ni memoria de estas corridas.
+- A diferencia del local, aquí **sí hay errores**, no solo latencia: el sistema pasa de
+  degradarse con cola a rechazar o perder peticiones al superar su capacidad.
 - Hay outliers aislados (20,5 s en una petición de la corrida 0.2; bloqueos de conexión de
-  ~1,1 s por posibles retransmisiones de SYN) sin errores asociados.
-- Pendiente: etiquetar cada petición del batch (`tags: { endpoint: ... }` en `sustained.js`) para
-  ver la latencia por ruta y confirmar cuál genera la cola.
-- Pendiente frente al enunciado: en producción se llegó a 75 VUs (se piden 100-200) y no se
-  corrieron `spike` ni `breakpoint`.
+  ~1,1 s por posibles retransmisiones de SYN).
+- Desde esta ronda `sustained.js`, `spike.js` y `breakpoint.js` agrupan las peticiones del
+  tablero con `tags: { name: ... }` (antes `from`/`to` creaban una serie de métricas por URL
+  y k6 avisaba de 200 mil series). El resumen exportado no incluye la latencia por endpoint
+  salvo que se declaren umbrales sobre esa etiqueta; sigue pendiente confirmar qué ruta
+  genera la cola.
+- Frente al enunciado: la sostenida llegó a 105 VUs en producción (rango 100-200), pero con
+  error de 6,35 % (se pide < 1 %); el spike llegó a 300 VUs (4×, no 5-10×); el breakpoint
+  se corrió y cortó, sin fijar el punto exacto. El perfil completo (150 VUs sostenidos,
+  750 en spike) corresponde a la ejecución local.
 
 ### Cómo leer estos números: es un monolito, la carga no se distribuye
 
@@ -253,7 +293,7 @@ pero hay estado local por instancia que habría que revisar antes: la caché Caf
 limiting de bucket4j (login y `/confirm`) viven en memoria de cada réplica, así que con
 varias los límites se multiplicarían y las cachés dejarían de ser coherentes entre sí.
 Estos resultados sirven como línea base de capacidad *por instancia* para dimensionar eso:
-~300 req/s con p95 ≈ 210 ms en esta EC2.
+~300 req/s con p95 ≈ 210 ms y error 0 % en esta EC2; por encima de ~390 req/s empiezan los errores.
 
 ## Gráficas y carpetas
 

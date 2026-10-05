@@ -1,4 +1,4 @@
-# DOCUMENTO DE MODELO DE DATOS Y ESPECIFICACIÓN DE LA API
+# DOCUMENTO DE MODELO DE DATOS ORIENTADO A APIS Y ESPECIFICACIÓN DEL CONTRATO
 
 **Plataforma interna de verificación de entregas para la empresa de retail analizada**
 
@@ -13,239 +13,267 @@
 | **Fecha** | 4 de octubre de 2026 |
 | **Estado** | Para revisión |
 
-> **Alcance.** Este documento es el entregable propio de la Fase 3: el modelo de datos
-> orientado a la API y la especificación formal del contrato (OpenAPI). El contrato
-> completo vive en [`openapi.json`](openapi.json); aquí se explica cómo se diseñó y cómo
-> se relaciona con el esquema de base de datos.
-
 ## Contenido
 
-1. [Modelo de datos](#1-modelo-de-datos)
-2. [Del modelo a los recursos de la API](#2-del-modelo-a-los-recursos-de-la-api)
-3. [Inventario de endpoints](#3-inventario-de-endpoints)
-4. [Convenciones del contrato](#4-convenciones-del-contrato)
-5. [Especificación OpenAPI](#5-especificación-openapi)
-6. [Conclusión](#6-conclusión)
+1. [Introducción](#1-introducción)
+2. [Recursos de la API](#2-recursos-de-la-api)
+3. [Relaciones entre recursos](#3-relaciones-entre-recursos)
+4. [Vistas por rol](#4-vistas-por-rol)
+5. [Modelos de entrada y salida por operación](#5-modelos-de-entrada-y-salida-por-operación)
+6. [Convenciones comunes](#6-convenciones-comunes)
+7. [Contrato OpenAPI](#7-contrato-openapi)
 
-## 1. Modelo de datos
+## 1. Introducción
 
-El esquema se define únicamente con migraciones Flyway
-(`backend/src/main/resources/db/migration/V1` a `V5`). Hibernate corre en modo `validate`:
-nunca modifica el esquema. Las migraciones solo avanzan, por lo que los cambios siguen el
-patrón expand/contract.
+Este documento describe el modelo de recursos que la API expone a sus consumidores, la
+aplicación del conductor y el panel administrativo, y la especificación formal que lo
+respalda. Es la tercera etapa del diseño: la Fase 1 delimitó el alcance del producto (PIN
+de un solo uso, evidencia fotográfica y geolocalización) y la Fase 2 eligió REST
+versionado sobre JSON como estilo arquitectónico. Aquí se define qué recursos existen, qué
+atributos tienen, cómo se relacionan y qué ve cada rol de ellos. El documento no describe el
+almacenamiento interno: un recurso es la representación que el consumidor recibe, no la
+forma en que el sistema la guarda.
+
+El enfoque es **contract-first**. El contrato OpenAPI es la fuente de verdad de la API: un
+cambio de recursos, atributos, códigos de respuesta o valores permitidos se escribe primero
+en el contrato y se revisa antes de implementarse. Una prueba automática de conformidad
+compara el contrato versionado con lo que el servicio publica en ejecución y falla ante
+cualquier diferencia, ya sea un campo, una ruta o un código de más o de menos. De esa forma
+la implementación no puede apartarse del contrato sin que el cambio sea visible y revisado.
+
+El contrato se diseñó con tres criterios: recursos separados por consumidor, de modo que el
+conductor reciba solo lo necesario para operar en campo; una sola forma de error para todas
+las operaciones; y operaciones de negocio explícitas (confirmar, publicar) en lugar de
+actualizaciones genéricas de estado. Donde el contrato no precisa un dato, este documento lo
+marca como **por confirmar** en lugar de suponerlo.
+
+## 2. Recursos de la API
+
+En las tablas, la columna *Obligatorio* corresponde al modelo de entrada con el que el
+recurso se crea o se envía; un guion (—) indica un atributo que solo aparece en las
+respuestas y que el servicio calcula. Los tipos son los del contrato.
+
+### 2.1 Usuario
+
+Persona con acceso al sistema, administradora o conductora.
+
+| Atributo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `id` | entero (int64) | — | Identificador del usuario. |
+| `username` | texto | Sí (alta) | Nombre de acceso. |
+| `password` | texto | Sí (alta); No (edición) | Contraseña. Nunca se devuelve. Al editar, si se omite o queda en blanco se conserva la actual. |
+| `fullName` | texto | Sí | Nombre completo. |
+| `role` | texto: `ADMIN`, `CONDUCTOR` | Sí (alta) | Rol del usuario. |
+| `active` | booleano | Sí (edición) | Indica si el usuario puede iniciar sesión. |
+
+### 2.2 Factura
+
+Comprobante que se entrega al cliente. Se crea en borrador con sus líneas y se publica
+después; al publicarse queda disponible para el conductor.
+
+| Atributo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `id` | entero (int64) | — | Identificador de la factura. |
+| `number` | texto | Sí | Número del comprobante. Un número repetido responde 409. |
+| `partnerName` | texto | Sí | Nombre del cliente destinatario. |
+| `deliveryAddress` | texto | No | Dirección de entrega. |
+| `latitude`, `longitude` | número (double) | No | Coordenadas esperadas de entrega, en la creación. En las respuestas se exponen como `expectedLatitude` y `expectedLongitude`. |
+| `requiresPin` | booleano | No | Si es verdadero, al publicar se genera un PIN de seis dígitos. |
+| `products` | arreglo de Línea de factura | Sí | Líneas del comprobante, solo en la creación. |
+| `invoiceDate` | texto | — | Fecha del comprobante (formato por confirmar). |
+| `state` | texto: `draft`, `posted`, `cancel` | — | Estado de la factura. |
+| `pin` | texto | — | PIN de seis dígitos. Solo en la vista del administrador. |
+| `confirmed` | booleano | — | Indica si la entrega ya fue confirmada. Solo en la vista del administrador. |
+| `createdBy`, `publishedBy` | texto | — | Usuario que creó y que publicó la factura. Solo en la vista del administrador. |
+
+### 2.3 Línea de factura
+
+| Atributo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `id` | entero (int64) | — | Identificador de la línea. |
+| `description` | texto | Sí | Descripción del producto. |
+| `quantity` | número (double) | Sí | Cantidad entregada. |
+
+### 2.4 Intento de entrega
+
+Registro de evidencia de cada confirmación, rechazo o incidencia. Se crea mediante las
+operaciones de confirmar entrega y reportar incidencia, y se consulta como historial.
+
+| Atributo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `id` | entero (int64) | — | Identificador del intento. |
+| `invoiceId` | entero (int64) | Sí | Factura a la que se refiere. |
+| `invoiceNumber` | texto | Sí (incidencia) | Número de la factura. |
+| `partnerName`, `deliveryAddress` | texto | No | Cliente y dirección de la factura. |
+| `driverName` | texto | — | Conductor que realizó el intento. |
+| `outcome` | texto: `CONFIRMED`, `REJECTED`, `INCIDENT` | — | Resultado del intento. |
+| `latitude`, `longitude` | número (double) | Sí (confirmación); No (incidencia) | Ubicación donde se registró el intento. |
+| `detail` | texto | — | Detalle del resultado: motivo de la incidencia o causa del rechazo. |
+| `hasPhoto` | booleano | — | Indica si el intento tiene foto de evidencia; la foto se obtiene por separado. |
+| `distanceFromExpectedMeters` | número (double) | — | Distancia, en metros, entre la ubicación registrada y la esperada. |
+| `createdAt` | fecha y hora (date-time) | — | Instante del registro. |
+
+### 2.5 Costo mensual
+
+Costo operativo por entrega verificada de un mes (modelo de *showback* de la Fase 1).
+
+| Atributo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `month` | texto, `AAAA-MM` | Sí | Mes consultado o al que corresponden las horas de soporte. |
+| `supportHours` | número (double) | Sí (≥ 0) | Horas de soporte del mes. En la entrada se envía como `hours`. |
+| `confirmedDeliveries` | entero (int64) | — | Entregas confirmadas en el mes. |
+| `evidencePhotoBytes` | entero (int64) | — | Tamaño acumulado de las fotos de evidencia, en bytes. |
+| `evidenceStorageGb` | número (double) | — | Almacenamiento de evidencia en GB. |
+| `infrastructureCostUsd`, `storageCostUsd`, `supportCostUsd` | número (double) | — | Costos por infraestructura, almacenamiento y soporte, en USD. |
+| `totalCostUsd` | número (double) | — | Costo total del mes, en USD. |
+| `costPerDeliveryUsd` | número (double) | — | Costo por entrega, en USD. |
+
+### 2.6 Métrica por conductor
+
+Resumen de resultados de un conductor en un rango de fechas.
+
+| Atributo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `driverName` | texto | — | Nombre del conductor. |
+| `confirmed`, `rejected`, `incident` | entero (int64) | — | Intentos confirmados, rechazados e incidencias. |
+| `total` | entero (int64) | — | Total de intentos. |
+
+## 3. Relaciones entre recursos
 
 ```mermaid
 erDiagram
-    APP_USER ||--o{ DELIVERY_LOG : "registra"
-    DELIVERY_INVOICE ||--|{ DELIVERY_INVOICE_LINE : "contiene"
-    DELIVERY_INVOICE ||--o{ DELIVERY_LOG : "genera"
-
-    APP_USER {
-        bigint id PK
-        varchar username UK
-        varchar password_hash
-        varchar full_name
-        varchar role
-        boolean active
-        timestamptz created_at
-    }
-    DELIVERY_INVOICE {
-        bigint id PK
-        varchar number UK
-        varchar partner_name
-        varchar delivery_address
-        double expected_latitude
-        double expected_longitude
-        date invoice_date
-        varchar state "draft | posted | cancel"
-        boolean requires_pin
-        varchar pin
-        boolean confirmed
-        timestamptz confirmed_at
-        int failed_pin_attempts
-        timestamptz pin_locked_until
-        varchar created_by
-        varchar published_by
-    }
-    DELIVERY_INVOICE_LINE {
-        bigint id PK
-        bigint invoice_id FK
-        text description
-        double quantity "CHECK > 0"
-    }
-    DELIVERY_LOG {
-        bigint id PK
-        bigint invoice_id FK
-        bigint driver_id FK
-        varchar invoice_number
-        varchar outcome
-        double latitude
-        double longitude
-        varchar detail
-        bytea photo
-        varchar photo_content_type
-        double distance_from_expected_meters
-        timestamptz created_at
-    }
-    OPERATIONAL_COST_INPUT {
-        date month PK
-        double support_hours
-    }
+    FACTURA ||--|{ LINEA_DE_FACTURA : "contiene"
+    FACTURA ||--o{ INTENTO_DE_ENTREGA : "registra"
+    USUARIO ||--o{ INTENTO_DE_ENTREGA : "realiza"
+    USUARIO ||--o| METRICA_POR_CONDUCTOR : "se resume en"
+    INTENTO_DE_ENTREGA }o--|| COSTO_MENSUAL : "se agrega en"
 ```
 
-| Tabla | Rol en el negocio | Restricciones e índices relevantes |
+- **Factura – Línea de factura (1 a N).** Una factura contiene una o más líneas; las líneas
+  se envían al crearla y el conductor las consulta aparte.
+- **Factura – Intento de entrega (1 a N).** Una factura puede acumular varios intentos
+  (por ejemplo, un rechazo por PIN incorrecto y luego una confirmación); el intento
+  referencia la factura por `invoiceId`.
+- **Usuario – Intento de entrega (1 a N).** Cada intento lo realiza un conductor. El
+  recurso lo identifica por `driverName` y no por un identificador de usuario (por
+  confirmar si se agregará un `driverId`).
+- **Usuario – Métrica por conductor (1 a 0..1).** La métrica agrupa los intentos del
+  conductor en el rango solicitado; no existe como recurso propio, se calcula en cada
+  consulta.
+- **Intento de entrega – Costo mensual (N a 1).** El costo de un mes se calcula a partir de
+  las entregas confirmadas de ese mes; tampoco se almacena como recurso independiente,
+  salvo las horas de soporte que se registran por mes.
+
+## 4. Vistas por rol
+
+Una misma factura se presenta distinto según quién la consulte. El administrador ve el
+comprobante completo; el conductor ve solo lo necesario para localizar y entregar.
+
+| Atributo de la factura | Administrador | Conductor |
 |---|---|---|
-| `delivery_invoice` | Comprobante a entregar (réplica del contrato mínimo del ERP) con su PIN y su estado | `number` único; `state` con `CHECK` (`draft`, `posted`, `cancel`); índices GIN `pg_trgm` sobre `lower(number)` y `lower(partner_name)` para la búsqueda parcial |
-| `delivery_invoice_line` | Ítems del comprobante | FK a `delivery_invoice`; `CHECK (quantity > 0)`; índice por `invoice_id` |
-| `delivery_log` | Evidencia de auditoría: cada confirmación o incidencia, con foto, GPS y distancia al destino | FK a factura y a usuario; índices por `driver_id`, `invoice_id` y `created_at DESC` |
-| `app_user` | Administradores y conductores (el campo `role` los distingue) | `username` único; la contraseña se guarda con BCrypt |
-| `operational_cost_input` | Insumo mensual (horas de soporte) para el cálculo del costo por entrega | PK por mes |
+| `id`, `number`, `partnerName`, `deliveryAddress`, `invoiceDate`, `state` | Sí | Sí |
+| `expectedLatitude`, `expectedLongitude` | Sí | Sí |
+| `pin` | **Sí** | **No** |
+| `requiresPin`, `confirmed` | Sí | No |
+| `createdBy`, `publishedBy` | Sí | No |
+| Líneas de la factura | Con la creación | Consulta aparte por factura |
 
-**Decisiones de diseño con efecto en la API**
+Otras diferencias de visibilidad:
 
-- **La evidencia se copia en `delivery_log`** (número, cliente, dirección). Un cambio posterior
-  en la factura no altera lo que se registró el día de la entrega.
-- **El estado es explícito y limitado.** El `CHECK` sobre `state` impide estados que la API
-  no sabe representar. `cancel` existe en el modelo, pero ningún endpoint lo produce todavía.
-- **Las fechas con significado de auditoría usan `timestamptz`** (V4), para no depender de la
-  zona horaria del servidor.
-- **Auditoría de autoría** (V5): `created_by` y `published_by` registran quién creó y quién
-  publicó cada factura.
-- **Las consultas de listado no traen la foto.** La columna `photo` (`bytea`) solo se lee en
-  los endpoints `.../photo`; los listados usan proyecciones sin ese campo.
+- **Alcance de la lista.** El administrador lista todas las facturas, con búsqueda y
+  paginación. El conductor solo busca facturas publicadas, con PIN habilitado y aún no
+  confirmadas, filtradas por número o cliente.
+- **Historial.** El administrador consulta el historial de todos los conductores; el
+  conductor, únicamente el propio.
+- **Fotos de evidencia.** El conductor solo obtiene la foto de sus propias entregas.
+- **Gestión.** Usuarios, métricas, costo y estado de resiliencia son exclusivos del
+  administrador. El administrador también puede usar las operaciones del conductor.
 
-**Límites conocidos del modelo**
+El PIN solo se transmite al administrador; el conductor lo recibe del cliente y lo envía al
+confirmar, nunca lo lee de la API.
 
-- El PIN se guarda en texto plano. Es una decisión deliberada, porque el sistema debe poder
-  mostrarlo al administrador para comunicarlo al cliente; la mitigación es el bloqueo tras 5
-  intentos fallidos por factura (`failed_pin_attempts`, `pin_locked_until`).
-- `app_user` modela tanto administradores como conductores, y el controlador que la expone
-  se llama `/admin/users`.
-- Eliminar un usuario con historial viola la FK `driver_id`; la API lo traduce a `409`.
+## 5. Modelos de entrada y salida por operación
 
-## 2. Del modelo a los recursos de la API
+Todas las operaciones están bajo el prefijo `/api/v1`. Salvo el inicio de sesión, exigen
+sesión iniciada. *Pág.* indica una respuesta paginada (sección 6).
 
-La API no expone las tablas tal cual. Cada recurso es una vista pensada para un consumidor
-(administrador o conductor), con su propio DTO.
+| Método y ruta | Rol | Se envía | Se devuelve | Códigos |
+|---|---|---|---|---|
+| `POST /auth/login` | Público | Credenciales (`username`, `password`) y opcionalmente `remember` | `username`, `fullName`, `role`; la sesión viaja en cookie | 200, 401, 429 |
+| `POST /auth/logout` | Sesión | — | Sin contenido | 204 |
+| `GET /admin/users` | Admin | `page`, `size` | Pág. de Usuario | 200, 400 |
+| `POST /admin/users` | Admin | Usuario (alta) | Usuario | 201, 400, 409 |
+| `PUT /admin/users/{id}` | Admin | Usuario (edición) | Usuario | 200, 400, 404, 409 |
+| `DELETE /admin/users/{id}` | Admin | — | Sin contenido | 204, 404, 409 |
+| `GET /admin/invoices` | Admin | `q`, `page`, `size` | Pág. de Factura (vista admin) | 200, 400 |
+| `POST /admin/invoices` | Admin | Factura con sus líneas | Factura (vista admin) | 201, 400, 409 |
+| `POST /admin/invoices/{id}/publish` | Admin | — | Factura con PIN | 200, 400 |
+| `GET /admin/deliveries` | Admin | `page`, `size` | Pág. de Intento de entrega | 200, 400 |
+| `GET /admin/deliveries/{id}/photo` | Admin | — | Imagen de evidencia | 200, 404 |
+| `GET /admin/dashboard/metrics` | Admin | `from`, `to` | Lista de Métrica por conductor | 200, 400 |
+| `GET /admin/dashboard/map` | Admin | `from`, `to` | Lista de Intento de entrega | 200, 400 |
+| `GET /admin/cost` | Admin | `month` | Costo mensual | 200, 400 |
+| `PUT /admin/cost/support-hours` | Admin | `month`, `hours` | Costo mensual | 200, 400 |
+| `GET /admin/resilience/status` | Admin | — | Estado del Circuit Breaker y del Retry | 200 |
+| `POST /admin/resilience/simulate-failures` | Admin | `count` | Estado del Circuit Breaker y del Retry | 200, 400 |
+| `GET /driver/invoices` | Conductor | `q` (obligatorio) | Lista de Factura (vista conductor) | 200 |
+| `GET /driver/invoices/{id}/lines` | Conductor | — | Lista de Línea de factura | 200 |
+| `POST /driver/deliveries/confirm` | Conductor | `invoiceId`, `pin`, `latitude`, `longitude`, `photoBase64` (obligatorios); `photoFilename`, `photoContentType`; cabecera `Idempotency-Key` | `success`, `message`, `photoUploaded` | 200, 400, 409, 422, 429, 503 |
+| `POST /driver/deliveries/incident` | Conductor | `invoiceId`, `invoiceNumber`, `reason` (obligatorios); `partnerName`, `deliveryAddress`, `notes`, `latitude`, `longitude`; cabecera `Idempotency-Key` | `success`, `message` | 200, 400 |
+| `GET /driver/deliveries/history` | Conductor | `page`, `size` | Pág. de Intento de entrega (propios) | 200, 400 |
+| `GET /driver/deliveries/{id}/photo` | Conductor | — | Imagen de evidencia (propia) | 200, 404 |
 
-| Tabla | Recurso REST | DTO (schema en OpenAPI) | Consumidor |
-|---|---|---|---|
-| `app_user` | `/api/v1/admin/users` | `CreateDriverRequest`, `UpdateDriverRequest`, `DriverResponse` | Administrador |
-| `app_user` | `/api/v1/auth/login`, `/logout` | `LoginRequest`, `LoginResponse` | Todos |
-| `delivery_invoice` (+ líneas) | `/api/v1/admin/invoices` | `CreateInvoice`, `AdminInvoiceResponse` | Administrador |
-| `delivery_invoice` (+ líneas) | `/api/v1/driver/invoices` | `InvoiceResponse`, `InvoiceLineResponse` | Conductor (no incluye el PIN) |
-| `delivery_log` | `/api/v1/driver/deliveries/confirm`, `/incident` | `ConfirmDeliveryRequest`/`Response`, `ReportIncidentRequest`/`Response` | Conductor |
-| `delivery_log` | `/api/v1/admin/deliveries`, `/driver/deliveries/history` | `DeliveryAttemptResponse`, `PageResponse*` | Administrador, conductor (solo lo propio) |
-| `delivery_log` (agregado) | `/api/v1/admin/dashboard/*` | `DriverMetricResponse` | Administrador |
-| `operational_cost_input` | `/api/v1/admin/cost` | `OperationalCostResponse`, `SetSupportHoursRequest` | Administrador |
-| (estado en memoria) | `/api/v1/admin/resilience/*` | `CircuitBreakerStatusResponse`, `SimulateFailuresRequest` | Administrador |
+Significado de los códigos propios del negocio: **409** número de factura o usuario
+duplicado, entrega ya confirmada o usuario con historial que no puede eliminarse; **422**
+PIN incorrecto; **429** demasiados intentos de inicio de sesión o de confirmación;
+**503** servicio externo simulado no disponible (circuito abierto).
 
-Las entidades JPA nunca salen por HTTP. Los controladores solo hablan con casos de uso
-(`domain/port/in`) y devuelven DTOs de `infrastructure/adapter/in/web/dto`.
+## 6. Convenciones comunes
 
-## 3. Inventario de endpoints
+**Paginación.** Los listados de usuarios, facturas del administrador y los dos historiales
+usan `page` (desde 0, por defecto 0) y `size` (por defecto 20, **máximo 100**; un valor
+mayor responde 400). La respuesta es un sobre con `content`, `page`, `size`,
+`totalElements` y `totalPages`.
 
-Contrato actual: 20 rutas (23 operaciones) bajo `/api/v1`, 23 schemas, 1 esquema de seguridad.
+**Filtros.** `q` busca por número de factura o por cliente, sin distinguir mayúsculas; es
+opcional en el listado del administrador y obligatorio en el del conductor. Las consultas
+del tablero (`metrics` y `map`) exigen un rango `from` y `to` en formato ISO-8601, con un
+**máximo de 93 días** y sin que `to` sea anterior a `from`; fuera de ello responden 400. El
+costo se consulta por `month`.
 
-| Verbo | Ruta | Rol | Respuestas |
-|---|---|---|---|
-| POST | `/auth/login` | Público | 200, 401, 429 |
-| POST | `/auth/logout` | Autenticado | 204 |
-| GET | `/admin/users` | Admin | 200, 400 |
-| POST | `/admin/users` | Admin | 201, 400, 409 |
-| PUT | `/admin/users/{id}` | Admin | 200, 400, 404, 409 |
-| DELETE | `/admin/users/{id}` | Admin | 204, 404, 409 |
-| GET | `/admin/invoices` | Admin | 200, 400 |
-| POST | `/admin/invoices` | Admin | 201, 400, 409 |
-| POST | `/admin/invoices/{id}/publish` | Admin | 200, 400 |
-| GET | `/admin/deliveries` | Admin | 200, 400 |
-| GET | `/admin/deliveries/{id}/photo` | Admin | 200, 404 |
-| GET | `/admin/dashboard/metrics` | Admin | 200, 400 |
-| GET | `/admin/dashboard/map` | Admin | 200, 400 |
-| GET | `/admin/cost` | Admin | 200, 400 |
-| PUT | `/admin/cost/support-hours` | Admin | 200, 400 |
-| GET | `/admin/resilience/status` | Admin | 200 |
-| POST | `/admin/resilience/simulate-failures` | Admin | 200, 400 |
-| GET | `/driver/invoices` | Conductor, Admin | 200 |
-| GET | `/driver/invoices/{id}/lines` | Conductor, Admin | 200 |
-| POST | `/driver/deliveries/confirm` | Conductor, Admin | 200, 400, 409, 422, 429, 503 |
-| POST | `/driver/deliveries/incident` | Conductor, Admin | 200, 400 |
-| GET | `/driver/deliveries/history` | Conductor, Admin | 200, 400 |
-| GET | `/driver/deliveries/{id}/photo` | Conductor, Admin | 200, 404 |
+**Idempotencia.** Confirmar una entrega y reportar una incidencia aceptan la cabecera
+opcional `Idempotency-Key`. Un reintento con la misma clave devuelve la respuesta ya dada
+sin repetir la operación, lo que protege ante cortes de red en campo.
 
-> `openapi.json` agrupa varias operaciones bajo una misma ruta (por ejemplo `GET` y `POST`
-> de `/admin/users`), por eso son 20 rutas y 23 operaciones.
+**Estructura única de error.** Toda respuesta 4xx o 5xx de todas las operaciones tiene la
+misma forma, declarada una sola vez en el contrato:
 
-## 4. Convenciones del contrato
-
-| Tema | Convención |
-|---|---|
-| **Versionado** | Prefijo explícito `/api/v1`. Un cambio incompatible abriría `/api/v2` sin romper a los clientes actuales. |
-| **Recursos y verbos** | Sustantivos en plural; `GET` lee, `POST` crea o ejecuta una acción de negocio (`confirm`, `publish`), `PUT` reemplaza, `DELETE` elimina. |
-| **Paginación** | Los listados devuelven `PageResponse<T>` (contenido, página, tamaño, total) con parámetros `page` y `size`; un `size` por encima del máximo responde `400`. |
-| **Filtrado** | Búsqueda por texto (`q`) sobre número y cliente en facturas, con escape de comodines (`%`, `_`) para que el filtro no se interprete como patrón. |
-| **Errores** | Una sola forma, `ErrorResponse` (`message`, `errors`, `path`, `timestamp`), producida solo por `GlobalExceptionHandler`. Los códigos están en la tabla siguiente. |
-| **Idempotencia** | `POST /driver/deliveries/confirm` y `/incident` aceptan el header opcional `Idempotency-Key`: un reintento con la misma clave devuelve la respuesta anterior sin repetir el efecto. |
-| **Autenticación** | Cookie `access_token` (JWT, `HttpOnly`) establecida por `POST /auth/login`. |
-| **CSRF** | Doble cookie: el cliente reenvía `XSRF-TOKEN` en el header `X-XSRF-TOKEN` en toda petición que modifica datos. |
-| **Autorización** | Por rol y por ruta: `/admin/**` exige `ROLE_ADMIN`; `/driver/**` admite `ADMIN` y `CONDUCTOR`. Un conductor solo ve su propio historial y sus propias fotos. |
-
-**Códigos de error y su origen**
-
-| Código | Cuándo | Excepción de dominio |
+| Atributo | Tipo | Descripción |
 |---|---|---|
-| 400 | Validación de campos, foto inválida, factura inexistente | `MethodArgumentNotValidException`, `DeliveryRejectedException`, `IllegalArgumentException` |
-| 401 | Credenciales inválidas o sin sesión | `InvalidCredentialsException` |
-| 403 | Rol insuficiente o CSRF ausente | Spring Security |
-| 404 | Recurso inexistente | `DriverNotFoundException` |
-| 409 | Entrega ya confirmada, usuario duplicado, borrado con historial | `DeliveryAlreadyConfirmedException`, `DriverAlreadyExistsException`, `DataIntegrityViolationException` |
-| 422 | PIN incorrecto | `InvalidPinException` |
-| 429 | Demasiados intentos de login o de confirmación | `TooManyLoginAttemptsException`, `TooManyConfirmAttemptsException` |
-| 503 | ERP simulado caído o Circuit Breaker abierto | `ErpUnavailableException`, `CallNotPermittedException` |
+| `message` | texto | Mensaje legible para el usuario. |
+| `errors` | objeto de texto a texto | Detalle por campo; solo en errores de validación (400). |
+| `path` | texto | Ruta donde ocurrió el error. |
+| `timestamp` | fecha y hora | Instante del error, en UTC. |
 
-## 5. Especificación OpenAPI
+**Seguridad de las peticiones.** Las que modifican datos requieren además la cabecera
+`X-XSRF-TOKEN` (protección CSRF con doble cookie).
 
-El contrato es [`openapi.json`](openapi.json) (OpenAPI 3.0.1, versión `1.0.0`). Se puede
-explorar de forma interactiva en `/swagger-ui/index.html` del backend, protegido con Basic
-Auth en producción, y se descarga en `/v3/api-docs`.
+**Por confirmar.** El contrato no declara por operación las respuestas 401 y 403 de las
+rutas protegidas, ni el formato de `invoiceDate`; el motivo de la incidencia (`reason`) es
+texto libre, aunque la aplicación del conductor ofrece cinco motivos predefinidos.
 
-**Cómo se produce y se mantiene.** El flujo es de código a contrato, no de contrato a
-código: `springdoc-openapi` genera el documento a partir de los controladores y DTO, y los
-endpoints críticos (login, confirmación, incidencia, facturas, costo, resiliencia) llevan
-`@Operation` y `@ApiResponses` escritos a mano, con el significado de cada código. El
-archivo `docs/openapi.json` es la copia versionada que se entrega y se revisa en cada PR.
-Esto significa que el contrato del repositorio no se escribió antes que el código. Lo que
-sí se hizo antes fue el diseño: los recursos, los códigos de error y la forma única de
-error se definieron en el diseño (Fases 1 y 2) y luego se implementaron.
+## 7. Contrato OpenAPI
 
-**Seguridad en el contrato.** Se declara un único esquema, `sessionCookie`
-(`type: apiKey`, `in: cookie`, `name: access_token`). Swagger UI solo envía la cookie si el
-login se hizo desde el propio navegador con "Try it out".
-
-**Ejemplo de operación (confirmar entrega).**
-
-```http
-POST /api/v1/driver/deliveries/confirm
-Cookie: access_token=<jwt>
-X-XSRF-TOKEN: <token>
-Idempotency-Key: 6f1c2a9e-...
-Content-Type: application/json
-
-{ "invoiceId": 42, "pin": "123456", "latitude": -2.170998,
-  "longitude": -79.922359, "photoBase64": "data:image/jpeg;base64,...",
-  "photoFilename": "evidencia.jpg", "photoContentType": "image/jpeg" }
-```
-
-| Código | Cuerpo |
+| Aspecto | Valor |
 |---|---|
-| 200 | `{ "success": true, "message": "Entrega confirmada correctamente. Evidencia guardada.", "photoUploaded": true }` |
-| 422 | `{ "message": "El PIN ingresado no es correcto.", "path": "/api/v1/driver/deliveries/confirm", "timestamp": "..." }` |
+| Especificación | OpenAPI 3.0.1, versión de la API 1.0.0, documento `openapi.json` versionado con el código |
+| Servidor | Relativo (`/`): el mismo origen desde el que se sirve la API |
+| Seguridad | Esquema `sessionCookie`: cookie `access_token`, `HttpOnly`, que contiene un JWT y establece el inicio de sesión; aplica a todas las rutas salvo la autenticación |
+| Tamaño | 20 rutas y 23 operaciones, todas bajo `/api/v1`; 24 esquemas de datos, incluido el de error |
+| Versionado | Prefijo `/api/v1`; un cambio incompatible abriría `/api/v2` sin romper a los clientes vigentes |
+| Consulta | Interactiva en `/swagger-ui/index.html` (con Basic Auth en producción) y descarga en `/v3/api-docs` |
 
-## 6. Conclusión
-
-El modelo de datos tiene cinco tablas con restricciones reales (unicidad, `CHECK`, claves
-foráneas e índices) y cambia solo por migraciones. La API publica 20 rutas versionadas con
-DTOs propios, una forma única de error y un contrato OpenAPI 3 versionado en el repositorio.
-La principal limitación frente a un enfoque estricto de "contract-first" es que el contrato
-se genera desde el código; el diseño de recursos y de errores sí precedió a la
-implementación.
+El contrato se mantiene como documento fuente en el repositorio y se actualiza en el mismo
+cambio que modifica la API. La prueba de conformidad de la sección 1 verifica en cada
+ejecución que `/v3/api-docs` y el documento coincidan, de modo que lo que aquí se describe es
+exactamente lo que la API publica.

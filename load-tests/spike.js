@@ -38,7 +38,7 @@ export default function (data) {
   const responses = http.batch([
     ['GET', `${BASE_URL}/api/v1/driver/invoices?q=001`, null, { headers }],
     ['GET', `${BASE_URL}/api/v1/admin/deliveries?page=0&size=20`, null, { headers }],
-    ['GET', `${BASE_URL}/api/v1/admin/dashboard/map?from=${from}&to=${to}`, null, { headers }],
+    ['GET', `${BASE_URL}/api/v1/admin/dashboard/map?from=${from}&to=${to}`, null, { headers, tags: { name: 'GET /admin/dashboard/map' } }],
   ])
 
   responses.forEach((res) => check(res, { 'status is 200 or 503': (r) => r.status === 200 || r.status === 503 }))

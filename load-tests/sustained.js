@@ -41,8 +41,8 @@ export default function (data) {
   const responses = http.batch([
     ['GET', `${BASE_URL}/api/v1/driver/invoices?q=001`, null, { headers }],
     ['GET', `${BASE_URL}/api/v1/admin/deliveries?page=0&size=20`, null, { headers }],
-    ['GET', `${BASE_URL}/api/v1/admin/dashboard/map?from=${from}&to=${to}`, null, { headers }],
-    ['GET', `${BASE_URL}/api/v1/admin/dashboard/metrics?from=${from}&to=${to}`, null, { headers }],
+    ['GET', `${BASE_URL}/api/v1/admin/dashboard/map?from=${from}&to=${to}`, null, { headers, tags: { name: 'GET /admin/dashboard/map' } }],
+    ['GET', `${BASE_URL}/api/v1/admin/dashboard/metrics?from=${from}&to=${to}`, null, { headers, tags: { name: 'GET /admin/dashboard/metrics' } }],
     ['GET', `${BASE_URL}/api/v1/admin/cost?month=${month}`, null, { headers }],
     ['GET', `${BASE_URL}/api/v1/admin/resilience/status`, null, { headers }],
   ])
